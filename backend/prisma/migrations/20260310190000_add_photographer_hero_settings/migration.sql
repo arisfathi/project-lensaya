@@ -1,0 +1,7 @@
+ALTER TABLE "Photographer"
+ADD COLUMN "heroTitle" VARCHAR(191),
+ADD COLUMN "heroSubtitle" TEXT,
+ADD COLUMN "heroImageUrl" VARCHAR(1024),
+ADD COLUMN "heroButtonText" VARCHAR(191),
+ADD COLUMN "heroButtonLink" VARCHAR(1024),
+ADD COLUMN "showHero" BOOLEAN NOT NULL DEFAULT true;

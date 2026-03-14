@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-03-12T15:13:22.681Z",
+  "totalAssets": 7,
+  "totalBytes": 652049,
+  "assets": [
+    {
+      "id": "27211216-9f0d-4bd7-8bd4-1285a761d2ec",
+      "photographerId": "784470c7-4781-4d73-b690-c2b101653096",
+      "bucket": "lensaya-images",
+      "objectKey": "uploads/784470c7-4781-4d73-b690-c2b101653096/1773074038061-66b60978e086c5b4-ChatGPT-Image-Feb-3--2026--06_13_44-PM.jpg",
+      "status": "PENDING",
+      "purpose": "AVATAR",
+      "type": "IMAGE",
+      "sizeBytes": 88465,
+      "createdAt": "2026-03-09T16:33:58.064Z",
+      "updatedAt": "2026-03-09T16:33:58.064Z"
+    },
+    {
+      "id": "3fd2bb3a-c32b-4d92-a337-ff46a1a2e440",
+      "photographerId": "a8a05494-660c-4dc4-b018-7034f3db0f9c",
+      "bucket": "lensaya-images",
+      "objectKey": "uploads/a8a05494-660c-4dc4-b018-7034f3db0f9c/1773256033166-2baf9999ed57a4ef-WhatsApp Image 2025-12-28 at 14.49.13.jpeg",
+      "status": "READY",
+      "purpose": "PORTFOLIO",
+      "type": "IMAGE",
+      "sizeBytes": 126775,
+      "createdAt": "2026-03-11T19:07:13.167Z",
+      "updatedAt": "2026-03-11T19:07:13.648Z"
+    },
+    {
+      "id": "5906cf85-1556-43b4-a4e9-597c20df2b2f",
+      "photographerId": "784470c7-4781-4d73-b690-c2b101653096",
+      "bucket": "lensaya-images",
+      "objectKey": "uploads/784470c7-4781-4d73-b690-c2b101653096/1773074061431-480ad08546b40e34-ChatGPT-Image-Feb-3--2026--06_13_44-PM.jpg",
+      "status": "PENDING",
+      "purpose": "AVATAR",
+      "type": "IMAGE",
+      "sizeBytes": 88465,
+      "createdAt": "2026-03-09T16:34:21.434Z",
+      "updatedAt": "2026-03-09T16:34:21.434Z"
+    },
+    {
+      "id": "9e76ad1f-39a8-4f3d-a411-515965ce6537",
+      "photographerId": "784470c7-4781-4d73-b690-c2b101653096",
+      "bucket": "lensaya-images",
+      "objectKey": "uploads/784470c7-4781-4d73-b690-c2b101653096/1773074034079-c813bac4fab1a0ed-ChatGPT-Image-Feb-3--2026--06_13_44-PM.jpg",
+      "status": "PENDING",
+      "purpose": "AVATAR",
+      "type": "IMAGE",
+      "sizeBytes": 88465,
+      "createdAt": "2026-03-09T16:33:54.083Z",
+      "updatedAt": "2026-03-09T16:33:54.083Z"
+    },
+    {
+      "id": "aa5406d0-0c27-4f96-8a4e-468501b9f34e",
+      "photographerId": "784470c7-4781-4d73-b690-c2b101653096",
+      "bucket": "lensaya-images",
+      "objectKey": "uploads/784470c7-4781-4d73-b690-c2b101653096/1773074088567-f23fa9b3a52bbb80-ChatGPT-Image-Feb-3--2026--06_13_44-PM.jpg",
+      "status": "PENDING",
+      "purpose": "AVATAR",
+      "type": "IMAGE",
+      "sizeBytes": 88893,
+      "createdAt": "2026-03-09T16:34:48.569Z",
+      "updatedAt": "2026-03-09T16:34:48.569Z"
+    },
+    {
+      "id": "d396d45f-8176-4b6f-a0e0-0584b85b187b",
+      "photographerId": "784470c7-4781-4d73-b690-c2b101653096",
+      "bucket": "lensaya-images",
+      "objectKey": "uploads/784470c7-4781-4d73-b690-c2b101653096/1773074573433-88e20c0da9022a99-ChatGPT-Image-Feb-3--2026--06_13_44-PM.jpg",
+      "status": "PENDING",
+      "purpose": "AVATAR",
+      "type": "IMAGE",
+      "sizeBytes": 82521,
+      "createdAt": "2026-03-09T16:42:53.437Z",
+      "updatedAt": "2026-03-09T16:42:53.437Z"
+    },
+    {
+      "id": "f1d1bc17-2db5-4471-9ed2-3074b8e016ad",
+      "photographerId": "784470c7-4781-4d73-b690-c2b101653096",
+      "bucket": "lensaya-images",
+      "objectKey": "uploads/784470c7-4781-4d73-b690-c2b101653096/1773074040081-1d53f7cc344978a1-ChatGPT-Image-Feb-3--2026--06_13_44-PM.jpg",
+      "status": "PENDING",
+      "purpose": "AVATAR",
+      "type": "IMAGE",
+      "sizeBytes": 88465,
+      "createdAt": "2026-03-09T16:34:00.084Z",
+      "updatedAt": "2026-03-09T16:34:00.084Z"
+    }
+  ]
+}

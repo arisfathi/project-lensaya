@@ -1,0 +1,516 @@
+{
+  "info": {
+    "_postman_id": "d9b7f98f-fbbf-4c6a-aad7-78d7ff620001",
+    "name": "Lensaya API",
+    "description": "Lensaya backend API collection for local development.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "00 Auth",
+      "item": [
+        {
+          "name": "Signup",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Demo User\",\n  \"email\": \"demo+1@lensaya.local\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/signup"
+          }
+        },
+        {
+          "name": "Login (Stores Tokens)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = {};",
+                  "try { json = pm.response.json(); } catch (e) {}",
+                  "if (pm.response.code === 200 && json && json.data) {",
+                  "  pm.environment.set('accessToken', json.data.accessToken || '');",
+                  "  pm.environment.set('refreshToken', json.data.refreshToken || '');",
+                  "  if (json.data.user && json.data.user.role) {",
+                  "    pm.environment.set('userRole', json.data.user.role);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"demo+1@lensaya.local\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "Google Auth",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"idToken\": \"{{googleIdToken}}\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/google"
+          }
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/auth/me"
+          }
+        },
+        {
+          "name": "Refresh",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/refresh"
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/logout"
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Photographer APIs",
+      "item": [
+        {
+          "name": "Dashboard Overview",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/dashboard/overview"
+          }
+        },
+        {
+          "name": "Website Summary",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/dashboard/website-summary"
+          }
+        },
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/profile"
+          }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studioName\": \"My Studio\",\n  \"bio\": \"Photographer bio\",\n  \"socialLinks\": {\n    \"instagram\": \"@myhandle\",\n    \"facebook\": \"facebook.com/mystudio\",\n    \"whatsapp\": \"+60123456789\"\n  },\n  \"themeColor\": \"#06b6d4\"\n}"
+            },
+            "url": "{{baseUrl}}/profile"
+          }
+        },
+        {
+          "name": "List Services",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/services"
+          }
+        },
+        {
+          "name": "Create Service",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Wedding Photography\",\n  \"description\": \"Full day wedding coverage\",\n  \"emoji\": \"??\",\n  \"order\": 1\n}"
+            },
+            "url": "{{baseUrl}}/services"
+          }
+        },
+        {
+          "name": "Update Service",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Service Name\"\n}"
+            },
+            "url": "{{baseUrl}}/services/{{serviceId}}"
+          }
+        },
+        {
+          "name": "Delete Service",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/services/{{serviceId}}"
+          }
+        },
+        {
+          "name": "List Packages",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/packages"
+          }
+        },
+        {
+          "name": "Create Package",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"serviceId\": \"{{serviceId}}\",\n  \"name\": \"Basic Package\",\n  \"price\": 999,\n  \"duration\": \"4 hours\",\n  \"features\": [\"100 edited photos\", \"Online gallery\"],\n  \"popular\": false\n}"
+            },
+            "url": "{{baseUrl}}/packages"
+          }
+        },
+        {
+          "name": "Duplicate Package",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Basic Package Copy\"\n}"
+            },
+            "url": "{{baseUrl}}/packages/{{packageId}}/duplicate"
+          }
+        },
+        {
+          "name": "Delete Package",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/packages/{{packageId}}"
+          }
+        },
+        {
+          "name": "List Portfolio",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/portfolio/items"
+          }
+        },
+        {
+          "name": "Create Portfolio Item",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"imageAssetId\": \"{{assetId}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"category\": \"Wedding\",\n  \"featured\": true\n}"
+            },
+            "url": "{{baseUrl}}/portfolio/items"
+          }
+        },
+        {
+          "name": "Feature Portfolio Item",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"featured\": true\n}"
+            },
+            "url": "{{baseUrl}}/portfolio/items/{{portfolioItemId}}/feature"
+          }
+        },
+        {
+          "name": "Delete Portfolio Item",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/portfolio/items/{{portfolioItemId}}"
+          }
+        },
+        {
+          "name": "Get Availability",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/availability?month=2026-03"
+          }
+        },
+        {
+          "name": "Patch Availability",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"updates\": [\n    {\n      \"date\": \"2026-03-12T00:00:00.000Z\",\n      \"status\": \"UNAVAILABLE\"\n    }\n  ]\n}"
+            },
+            "url": "{{baseUrl}}/availability"
+          }
+        },
+        {
+          "name": "Analytics Overview",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/analytics/overview"
+          }
+        },
+        {
+          "name": "Analytics Activity",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/analytics/activity?page=1&limit=20"
+          }
+        },
+        {
+          "name": "Notifications",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/notifications"
+          }
+        },
+        {
+          "name": "Billing Plans",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "url": "{{baseUrl}}/billing/plans"
+          }
+        },
+        {
+          "name": "Billing Subscription",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/billing/subscription"
+          }
+        },
+        {
+          "name": "List Booking Leads",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/bookings?page=1&limit=10"
+          }
+        },
+        {
+          "name": "Update Booking Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"CONFIRMED\"\n}"
+            },
+            "url": "{{baseUrl}}/bookings/{{bookingId}}/status"
+          }
+        },
+        {
+          "name": "Delete Upload Asset",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/uploads/{{assetId}}"
+          }
+        },
+        {
+          "name": "Change Plan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetPlanId\": \"PRO\",\n  \"billingCycle\": \"monthly\",\n  \"successUrl\": \"http://localhost:5173/dashboard/pricing?billing=success\",\n  \"cancelUrl\": \"http://localhost:5173/dashboard/pricing?billing=cancel\"\n}"
+            },
+            "url": "{{baseUrl}}/billing/change-plan"
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Admin APIs",
+      "item": [
+        {
+          "name": "Admin Dashboard Overview",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/dashboard/overview"
+          }
+        },
+        {
+          "name": "Admin Photographers",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/photographers?page=1&limit=20"
+          }
+        },
+        {
+          "name": "Admin Revenue Overview",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/revenue/overview"
+          }
+        },
+        {
+          "name": "Admin Analytics Overview",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/admin/analytics/overview"
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Public APIs",
+      "item": [
+        {
+          "name": "Featured Photographers",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "url": "{{baseUrl}}/public/photographers/featured"
+          }
+        },
+        {
+          "name": "Photographer Profile",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "url": "{{baseUrl}}/public/photographers/{{username}}"
+          }
+        },
+        {
+          "name": "Public Portfolio",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "url": "{{baseUrl}}/public/photographers/{{username}}/portfolio"
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Tracking",
+      "item": [
+        {
+          "name": "Track Analytics Event",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventType\": \"portfolio_view\",\n  \"photographerUsername\": \"{{username}}\",\n  \"serviceId\": \"{{serviceId}}\",\n  \"packageId\": \"{{packageId}}\",\n  \"sessionId\": \"sess_abc123\",\n  \"source\": \"website\",\n  \"metadata\": {\n    \"portfolioItemId\": \"{{portfolioItemId}}\",\n    \"path\": \"/{{username}}\"\n  }\n}"
+            },
+            "url": "{{baseUrl}}/analytics/events"
+          }
+        }
+      ]
+    }
+  ]
+}

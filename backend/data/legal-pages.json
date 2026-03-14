@@ -1,0 +1,20 @@
+[
+  {
+    "slug": "privacy-policy",
+    "title": "Privacy Policy",
+    "content": "Describe what data Lensaya collects, how it is used, and how photographers and visitors can request updates or deletion.",
+    "updatedAt": "2026-03-11T00:00:00.000Z"
+  },
+  {
+    "slug": "terms-of-service",
+    "title": "Terms of Service",
+    "content": "Describe acceptable use, account responsibilities, billing terms, and platform limitations for photographers and visitors.",
+    "updatedAt": "2026-03-11T00:00:00.000Z"
+  },
+  {
+    "slug": "cookie-policy",
+    "title": "Cookie Policy",
+    "content": "Describe which cookies are used for authentication, analytics, and preferences, and how users can control cookie consent.",
+    "updatedAt": "2026-03-11T00:00:00.000Z"
+  }
+]
