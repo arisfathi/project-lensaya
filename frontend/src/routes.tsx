@@ -1,43 +1,12 @@
-import { Suspense, lazy, type ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { createBrowserRouter } from "react-router-dom";
 import { GuestOnlyRoute, RoleProtectedRoute } from "./components/RoleProtectedRoute";
 import { PlatformHostBoundary } from "./components/routing/PlatformHostBoundary";
 import { PublicHostCanonicalRoute } from "./components/routing/PublicHostCanonicalRoute";
 import { LoadingSpinner } from "./components/ui/LoadingSpinner";
-
-const HostAwareHome = lazy(() => import("./pages/HostAwareHome"));
-const Signup = lazy(() => import("./pages/Signup"));
-const Login = lazy(() => import("./pages/Login"));
-const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
-const ResetPassword = lazy(() => import("./pages/ResetPassword"));
-const Pricing = lazy(() => import("./pages/Pricing"));
-const NotFound = lazy(() => import("./pages/NotFound"));
-const PhotographerPortfolio = lazy(() => import("./pages/PhotographerPortfolio"));
-const PublicGallery = lazy(() => import("./pages/PublicGallery"));
-const HostAwareGallery = lazy(() => import("./pages/HostAwareGallery"));
-const PhotographerDirectory = lazy(() => import("./pages/PhotographerDirectory"));
-const DashboardOverview = lazy(() => import("./pages/dashboard/DashboardOverview"));
-const DashboardPricing = lazy(() => import("./pages/dashboard/Pricing"));
-const Portfolio = lazy(() => import("./pages/dashboard/Portfolio"));
-const Services = lazy(() => import("./pages/dashboard/Services"));
-const Packages = lazy(() => import("./pages/dashboard/Packages"));
-const Availability = lazy(() => import("./pages/dashboard/Availability"));
-const Settings = lazy(() => import("./pages/dashboard/Settings"));
-const WebsitePreview = lazy(() => import("./pages/dashboard/WebsitePreview"));
-const DashboardAnalytics = lazy(() => import("./pages/dashboard/Analytics"));
-const DashboardReferrals = lazy(() => import("./pages/dashboard/Referrals"));
-const DashboardTransactions = lazy(() => import("./pages/dashboard/Transactions"));
-const MockCheckout = lazy(() => import("./pages/dashboard/MockCheckout"));
-const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"));
-const Photographers = lazy(() => import("./pages/admin/Photographers"));
-const Subscriptions = lazy(() => import("./pages/admin/Subscriptions"));
-const Revenue = lazy(() => import("./pages/admin/Revenue"));
-const Storage = lazy(() => import("./pages/admin/Storage"));
-const Moderation = lazy(() => import("./pages/admin/Moderation"));
-const AdminReferrals = lazy(() => import("./pages/admin/Referrals"));
-const AdminAnalytics = lazy(() => import("./pages/admin/Analytics"));
-const SystemLogs = lazy(() => import("./pages/admin/SystemLogs"));
-const AdminSettings = lazy(() => import("./pages/admin/AdminSettings"));
+import { pages } from "./routes.lazy";
+import { ROUTES } from "./routes.paths";
+import { RootLayout } from "./layouts/RootLayout";
 
 const routeFallback = (
   <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -56,6 +25,9 @@ const protectedRoute = (role: "ADMIN" | "PHOTOGRAPHER", target: "app" | "admin",
     <RoleProtectedRoute role={role}>{withSuspense(node)}</RoleProtectedRoute>
   </PlatformHostBoundary>
 );
+const appRoute = (node: ReactNode) => (
+  <PlatformHostBoundary target="app">{withSuspense(node)}</PlatformHostBoundary>
+);
 const marketingRoute = (node: ReactNode) => (
   <PlatformHostBoundary target="public">{withSuspense(node)}</PlatformHostBoundary>
 );
@@ -64,140 +36,190 @@ const publicCanonicalRoute = (targetPath: "/" | "/gallery", node: ReactNode) => 
 );
 
 export const router = createBrowserRouter([
+    {
+      path: "/",
+      element: <RootLayout />,
+      children: [
   {
-    path: "/",
-    element: withSuspense(<HostAwareHome />),
+    path: ROUTES.home,
+    element: withSuspense(<pages.HostAwareHome />),
   },
   {
-    path: "/signup",
-    element: guestRoute(<Signup />),
+    path: ROUTES.signup,
+    element: guestRoute(<pages.Signup />),
   },
   {
-    path: "/login",
-    element: guestRoute(<Login />),
+    path: ROUTES.login,
+    element: guestRoute(<pages.Login />),
   },
   {
-    path: "/forgot-password",
-    element: guestRoute(<ForgotPassword />),
+    path: ROUTES.verifyEmail,
+    element: appRoute(<pages.VerifyEmail />),
   },
   {
-    path: "/reset-password",
-    element: guestRoute(<ResetPassword />),
+    path: ROUTES.forgotPassword,
+    element: guestRoute(<pages.ForgotPassword />),
   },
   {
-    path: "/pricing",
-    element: marketingRoute(<Pricing />),
+    path: ROUTES.resetPassword,
+    element: guestRoute(<pages.ResetPassword />),
   },
   {
-    path: "/photographers",
-    element: marketingRoute(<PhotographerDirectory />),
+    path: ROUTES.pricing,
+    element: marketingRoute(<pages.Pricing />),
   },
   {
-    path: "/p/:username",
-    element: publicCanonicalRoute("/", <PhotographerPortfolio />),
+    path: ROUTES.photographers,
+    element: marketingRoute(<pages.PhotographerDirectory />),
   },
   {
-    path: "/p/:username/gallery",
-    element: publicCanonicalRoute("/gallery", <PublicGallery />),
+    path: ROUTES.helpCenter,
+    element: marketingRoute(<pages.HelpCenter />),
   },
   {
-    path: "/portfolio",
-    element: publicCanonicalRoute("/", <PhotographerPortfolio />),
+    path: ROUTES.blog,
+    element: marketingRoute(<pages.Blog />),
   },
   {
-    path: "/gallery",
-    element: withSuspense(<HostAwareGallery />),
+    path: ROUTES.guides,
+    element: marketingRoute(<pages.Guides />),
   },
   {
-    path: "/dashboard",
-    element: protectedRoute("PHOTOGRAPHER", "app", <DashboardOverview />),
+    path: ROUTES.about,
+    element: marketingRoute(<pages.About />),
   },
   {
-    path: "/dashboard/pricing",
-    element: protectedRoute("PHOTOGRAPHER", "app", <DashboardPricing />),
+    path: ROUTES.contact,
+    element: marketingRoute(<pages.Contact />),
   },
   {
-    path: "/dashboard/portfolio",
-    element: protectedRoute("PHOTOGRAPHER", "app", <Portfolio />),
+    path: ROUTES.privacyPolicy,
+    element: marketingRoute(<pages.PrivacyPolicy />),
   },
   {
-    path: "/dashboard/services",
-    element: protectedRoute("PHOTOGRAPHER", "app", <Services />),
+    path: ROUTES.termsOfService,
+    element: marketingRoute(<pages.TermsOfService />),
   },
   {
-    path: "/dashboard/packages",
-    element: protectedRoute("PHOTOGRAPHER", "app", <Packages />),
+    path: ROUTES.cookiePolicy,
+    element: marketingRoute(<pages.CookiePolicy />),
   },
   {
-    path: "/dashboard/availability",
-    element: protectedRoute("PHOTOGRAPHER", "app", <Availability />),
+    path: ROUTES.publicPortfolioByUsername,
+    element: publicCanonicalRoute("/", <pages.PhotographerPortfolio />),
   },
   {
-    path: "/dashboard/preview",
-    element: protectedRoute("PHOTOGRAPHER", "app", <WebsitePreview />),
+    path: ROUTES.publicGalleryByUsername,
+    element: publicCanonicalRoute("/gallery", <pages.PublicGallery />),
   },
   {
-    path: "/dashboard/analytics",
-    element: protectedRoute("PHOTOGRAPHER", "app", <DashboardAnalytics />),
+    path: ROUTES.portfolio,
+    element: publicCanonicalRoute("/", <pages.PhotographerPortfolio />),
   },
   {
-    path: "/dashboard/settings",
-    element: protectedRoute("PHOTOGRAPHER", "app", <Settings />),
+    path: ROUTES.gallery,
+    element: withSuspense(<pages.HostAwareGallery />),
   },
   {
-    path: "/dashboard/referrals",
-    element: protectedRoute("PHOTOGRAPHER", "app", <DashboardReferrals />),
+    path: ROUTES.dashboard,
+    element: protectedRoute("PHOTOGRAPHER", "app", <pages.DashboardOverview />),
   },
   {
-    path: "/dashboard/transactions",
-    element: protectedRoute("PHOTOGRAPHER", "app", <DashboardTransactions />),
+    path: ROUTES.dashboardPricing,
+    element: protectedRoute("PHOTOGRAPHER", "app", <pages.DashboardPricing />),
   },
   {
-    path: "/dashboard/billing/mock-checkout",
-    element: protectedRoute("PHOTOGRAPHER", "app", <MockCheckout />),
+    path: ROUTES.dashboardPortfolio,
+    element: protectedRoute("PHOTOGRAPHER", "app", <pages.Portfolio />),
   },
   {
-    path: "/admin",
-    element: protectedRoute("ADMIN", "admin", <AdminDashboard />),
+    path: ROUTES.dashboardServices,
+    element: protectedRoute("PHOTOGRAPHER", "app", <pages.Services />),
   },
   {
-    path: "/admin/photographers",
-    element: protectedRoute("ADMIN", "admin", <Photographers />),
+    path: ROUTES.dashboardPackages,
+    element: protectedRoute("PHOTOGRAPHER", "app", <pages.Packages />),
   },
   {
-    path: "/admin/subscriptions",
-    element: protectedRoute("ADMIN", "admin", <Subscriptions />),
+    path: ROUTES.dashboardPreview,
+    element: protectedRoute("PHOTOGRAPHER", "app", <pages.WebsitePreview />),
   },
   {
-    path: "/admin/revenue",
-    element: protectedRoute("ADMIN", "admin", <Revenue />),
+    path: ROUTES.dashboardTeam,
+    element: protectedRoute("PHOTOGRAPHER", "app", <pages.TeamSettings />),
   },
   {
-    path: "/admin/storage",
-    element: protectedRoute("ADMIN", "admin", <Storage />),
+    path: ROUTES.dashboardAvailability,
+    element: protectedRoute("PHOTOGRAPHER", "app", <pages.Availability />),
   },
   {
-    path: "/admin/moderation",
-    element: protectedRoute("ADMIN", "admin", <Moderation />),
+    path: ROUTES.dashboardAnalytics,
+    element: protectedRoute("PHOTOGRAPHER", "app", <pages.DashboardAnalytics />),
   },
   {
-    path: "/admin/referrals",
-    element: protectedRoute("ADMIN", "admin", <AdminReferrals />),
+    path: ROUTES.dashboardSettings,
+    element: protectedRoute("PHOTOGRAPHER", "app", <pages.Settings />),
   },
   {
-    path: "/admin/analytics",
-    element: protectedRoute("ADMIN", "admin", <AdminAnalytics />),
+    path: ROUTES.dashboardReferrals,
+    element: protectedRoute("PHOTOGRAPHER", "app", <pages.DashboardReferrals />),
   },
   {
-    path: "/admin/logs",
-    element: protectedRoute("ADMIN", "admin", <SystemLogs />),
+    path: ROUTES.dashboardTransactions,
+    element: protectedRoute("PHOTOGRAPHER", "app", <pages.DashboardTransactions />),
   },
   {
-    path: "/admin/settings",
-    element: protectedRoute("ADMIN", "admin", <AdminSettings />),
+    path: ROUTES.dashboardMockCheckout,
+    element: protectedRoute("PHOTOGRAPHER", "app", <pages.MockCheckout />),
   },
   {
-    path: "*",
-    element: withSuspense(<NotFound />),
+    path: ROUTES.admin,
+    element: protectedRoute("ADMIN", "admin", <pages.AdminDashboard />),
+  },
+  {
+    path: ROUTES.adminPhotographers,
+    element: protectedRoute("ADMIN", "admin", <pages.Photographers />),
+  },
+  {
+    path: ROUTES.adminSubscriptions,
+    element: protectedRoute("ADMIN", "admin", <pages.Subscriptions />),
+  },
+  {
+    path: ROUTES.adminRevenue,
+    element: protectedRoute("ADMIN", "admin", <pages.Revenue />),
+  },
+  {
+    path: ROUTES.adminStorage,
+    element: protectedRoute("ADMIN", "admin", <pages.Storage />),
+  },
+  {
+    path: ROUTES.adminModeration,
+    element: protectedRoute("ADMIN", "admin", <pages.Moderation />),
+  },
+  {
+    path: ROUTES.adminReferrals,
+    element: protectedRoute("ADMIN", "admin", <pages.AdminReferrals />),
+  },
+  {
+    path: ROUTES.adminAnalytics,
+    element: protectedRoute("ADMIN", "admin", <pages.AdminAnalytics />),
+  },
+  {
+    path: ROUTES.adminLogs,
+    element: protectedRoute("ADMIN", "admin", <pages.SystemLogs />),
+  },
+  {
+    path: ROUTES.adminSettings,
+    element: protectedRoute("ADMIN", "admin", <pages.AdminSettings />),
+  },
+  {
+    path: ROUTES.adminContent,
+    element: protectedRoute("ADMIN", "admin", <pages.ContentCms />),
+  },
+  {
+    path: ROUTES.notFound,
+    element: withSuspense(<pages.NotFound />),
+  },
+      ],
   },
 ]);

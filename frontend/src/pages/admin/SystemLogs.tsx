@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { FileText, Shield, LogIn, AlertTriangle, Search, Filter } from "lucide-react";
-import { AdminLayout } from "../../layouts/AdminLayout";
+import { AdminLayout } from "../../components/admin/AdminLayout";
 import { LoadingCard, LoadingSpinner } from "../../components/ui/LoadingSpinner";
 import { adminApi, getApiErrorMessage } from "../../lib/api";
 import { useToast } from "../../contexts/ToastContext";
@@ -318,3 +318,4 @@ export default function SystemLogs() {
     </AdminLayout>
   );
 }
+

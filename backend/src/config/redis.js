@@ -2,7 +2,7 @@ import Redis from "ioredis";
 import { env } from "./env.js";
 import { logger } from "./logger.js";
 
-export const isRedisConfigured = Boolean(env.redisUrl);
+export const isRedisConfigured = env.nodeEnv !== "test" && Boolean(env.redisUrl);
 
 export const redis = isRedisConfigured
   ? new Redis(env.redisUrl, {

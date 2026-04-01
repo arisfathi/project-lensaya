@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Users, UserCheck, CreditCard, DollarSign, HardDrive, TrendingUp } from "lucide-react";
 import { LineChart, Line, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { AdminLayout } from "../../layouts/AdminLayout";
+import { AdminLayout } from "../../components/admin/AdminLayout";
 import { LoadingCard } from "../../components/ui/LoadingSpinner";
 import { adminApi, getApiErrorMessage } from "../../lib/api";
 import { useToast } from "../../contexts/ToastContext";
@@ -139,7 +139,7 @@ export default function AdminDashboard() {
   }, [overview?.planDistribution]);
 
   const proSubscribers = planDistribution.find((item) => item.name === "Pro")?.value || 0;
-  const platformTraffic = growthData.reduce((sum, item) => sum + Number(item.photographers || 0), 0);
+  const photographerGrowthSixMonths = growthData.reduce((sum, item) => sum + Number(item.photographers || 0), 0);
 
   const stats = [
     {
@@ -178,8 +178,8 @@ export default function AdminDashboard() {
       iconColor: "text-orange-500",
     },
     {
-      name: "Platform Traffic",
-      value: formatCompact(platformTraffic),
+      name: "Photographer Growth (6M)",
+      value: formatCompact(photographerGrowthSixMonths),
       icon: TrendingUp,
       bgColor: "bg-pink-50",
       iconColor: "text-pink-500",
@@ -378,3 +378,4 @@ export default function AdminDashboard() {
     </AdminLayout>
   );
 }
+

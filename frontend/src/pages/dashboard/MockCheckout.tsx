@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, BadgeCheck, CircleAlert, CircleX, CreditCard, FlaskConical, LoaderCircle } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { DashboardLayout } from "../../layouts/DashboardLayout";
+import { DashboardLayout } from "../../components/dashboard/DashboardLayout";
+import { DashboardPageHero } from "../../components/dashboard/DashboardPageHero";
 import { Button } from "../../components/ui/Button";
 import { LoadingCard } from "../../components/ui/LoadingSpinner";
 import { useToast } from "../../contexts/ToastContext";
@@ -109,27 +110,24 @@ export default function MockCheckout() {
 
   return (
     <DashboardLayout>
-      <div className="mx-auto max-w-4xl space-y-6">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium uppercase tracking-[0.2em] text-cyan-600">Mock Billing</p>
-            <h1 className="mt-2 text-3xl font-bold text-slate-900">Test the checkout flow safely</h1>
-            <p className="mt-2 text-sm text-slate-600">
-              This screen simulates provider checkout without live CHIP credentials. Use it to validate upgrades,
-              trials, failures, and cancellations end to end.
-            </p>
-          </div>
-          <Link
-            to="/dashboard/pricing"
-            className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to pricing
-          </Link>
-        </div>
+      <div className="mx-auto max-w-5xl space-y-4 sm:space-y-6">
+        <DashboardPageHero
+          eyebrow="Mock Billing"
+          title="Test the checkout flow safely"
+          description="This screen simulates provider checkout without live CHIP credentials. Use it to validate upgrades, trials, failures, and cancellations end to end."
+          action={
+            <Link
+              to="/dashboard/pricing"
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to pricing
+            </Link>
+          }
+        />
 
-        <div className="grid gap-6 lg:grid-cols-[1.4fr_0.8fr]">
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="grid gap-4 sm:gap-6 lg:grid-cols-[1.35fr_0.85fr]">
+          <section className="rounded-2xl border border-slate-200/80 bg-white p-3.5 sm:rounded-xl sm:p-6 sm:shadow-sm">
             <div className="flex items-center gap-3">
               <div className="rounded-2xl bg-cyan-50 p-3 text-cyan-600">
                 <CreditCard className="h-6 w-6" />
@@ -140,26 +138,26 @@ export default function MockCheckout() {
               </div>
             </div>
 
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="mt-4 grid gap-3 sm:mt-6 sm:grid-cols-2 sm:gap-4">
+              <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 px-4 py-3">
                 <p className="text-xs uppercase tracking-wide text-slate-500">Current plan</p>
                 <p className="mt-1 text-sm font-semibold text-slate-900">{session.currentPlan}</p>
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 px-4 py-3">
                 <p className="text-xs uppercase tracking-wide text-slate-500">Target plan</p>
                 <p className="mt-1 text-sm font-semibold text-slate-900">{session.targetPlan || "Unknown"}</p>
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 px-4 py-3">
                 <p className="text-xs uppercase tracking-wide text-slate-500">Billing interval</p>
                 <p className="mt-1 text-sm font-semibold text-slate-900">{formatBillingCycle(session.billingCycle)}</p>
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 px-4 py-3">
                 <p className="text-xs uppercase tracking-wide text-slate-500">Amount due</p>
                 <p className="mt-1 text-sm font-semibold text-slate-900">{formatCurrency(session.amount, session.currency)}</p>
               </div>
             </div>
 
-            <div className="mt-6 rounded-2xl border border-cyan-200 bg-cyan-50 px-4 py-4 text-sm text-cyan-900">
+            <div className="mt-4 rounded-xl border border-cyan-200 bg-cyan-50/80 px-4 py-4 text-sm text-cyan-900 sm:mt-6">
               <p className="font-semibold">What this validates</p>
               <ul className="mt-2 space-y-2 text-cyan-900/90">
                 <li>Immediate paid upgrades</li>
@@ -170,17 +168,17 @@ export default function MockCheckout() {
             </div>
           </section>
 
-          <aside className="rounded-3xl border border-slate-200 bg-slate-950 p-6 text-white shadow-sm">
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-cyan-200">
+          <aside className="rounded-2xl border border-slate-200/80 bg-slate-50/75 p-3.5 sm:rounded-xl sm:p-6 sm:shadow-sm">
+            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
               <FlaskConical className="h-4 w-4" />
               Provider: {session.provider.toUpperCase()}
             </div>
-            <h2 className="mt-4 text-xl font-semibold">Choose a simulated outcome</h2>
-            <p className="mt-2 text-sm text-slate-300">
+            <h2 className="mt-4 text-xl font-semibold text-slate-900">Choose a simulated outcome</h2>
+            <p className="mt-2 text-sm text-slate-600">
               Each action updates subscription state and transaction records as if a provider callback had completed.
             </p>
 
-            <div className="mt-6 space-y-3">
+            <div className="mt-5 space-y-2.5">
               <Button
                 className="w-full justify-center bg-emerald-500 text-white hover:bg-emerald-600"
                 onClick={() => {
@@ -205,7 +203,7 @@ export default function MockCheckout() {
               ) : null}
               <Button
                 variant="secondary"
-                className="w-full justify-center border border-red-200 text-red-700 hover:bg-red-50"
+                className="w-full justify-center border border-red-200 bg-white text-red-700 hover:bg-red-50"
                 onClick={() => {
                   void complete("failed");
                 }}
@@ -216,7 +214,7 @@ export default function MockCheckout() {
               </Button>
               <Button
                 variant="secondary"
-                className="w-full justify-center border border-slate-200 text-slate-100 hover:bg-white/10"
+                className="w-full justify-center border border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
                 onClick={() => {
                   void complete("canceled");
                 }}
@@ -232,3 +230,4 @@ export default function MockCheckout() {
     </DashboardLayout>
   );
 }
+

@@ -1,3 +1,5 @@
+import { initializeMetaPixel } from "./lib/metaPixel";
+initializeMetaPixel();
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { GoogleOAuthProvider } from "@react-oauth/google";

@@ -2,9 +2,9 @@ import { prisma } from "./prisma.js";
 
 const REQUIRED_COLUMNS = {
   Photographer: ["location", "city", "country", "specialty", "style", "hideBranding"],
-  Subscription: ["chipPurchaseId"],
+  Booking: ["preferredTime", "notes"],
+  Subscription: ["chipPurchaseId", "billingInterval", "pendingPlan", "pendingBillingInterval"],
   PlatformSetting: ["key", "value"],
-  LegalPage: ["slug", "title", "content"],
 };
 
 const REQUIRED_ENUM_VALUES = {

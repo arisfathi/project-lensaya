@@ -43,6 +43,7 @@ export function useStudioUsernamePreview(studioName: string) {
     const localUsername = normalizeUsernameSeed(trimmedStudioName);
 
     if (!trimmedStudioName) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- pre-existing behavior; isolated in Phase 1.5
       setPreview(createPreviewState("", "", { isEmpty: true }));
       return undefined;
     }

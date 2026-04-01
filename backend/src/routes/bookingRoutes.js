@@ -5,9 +5,10 @@ import { tenantContext } from "../middleware/tenantContext.js";
 import { validate } from "../middleware/validate.js";
 import {
   bookingStatusSchema,
+  bookingNotesPatchSchema,
   bookingIdParamSchema,
   monthQuerySchema,
-  basicListQuerySchema,
+  bookingListQuerySchema,
 } from "../utils/validationSchemas.js";
 
 const router = Router();
@@ -16,8 +17,15 @@ router.get(
   "/bookings",
   requireAuth,
   tenantContext,
-  validate(basicListQuerySchema, "query"),
+  validate(bookingListQuerySchema, "query"),
   photographerController.bookingList
+);
+router.get(
+  "/bookings/export",
+  requireAuth,
+  tenantContext,
+  validate(bookingListQuerySchema, "query"),
+  photographerController.exportBookingLeads
 );
 router.get(
   "/bookings/calendar",
@@ -33,6 +41,14 @@ router.patch(
   validate(bookingIdParamSchema, "params"),
   validate(bookingStatusSchema),
   photographerController.updateBookingStatus
+);
+router.patch(
+  "/bookings/:bookingId",
+  requireAuth,
+  tenantContext,
+  validate(bookingIdParamSchema, "params"),
+  validate(bookingNotesPatchSchema),
+  photographerController.updateBookingNotes
 );
 
 export default router;

@@ -25,12 +25,17 @@ const worker = new Worker(
       return { delivered: true };
     }
 
+    if (job.name === "verification-email") {
+      await emailService.sendVerificationEmail(job.data.email, job.data.fullName || "there", job.data.token || "");
+      return { delivered: true };
+    }
+
     logger.warn({ queue: EMAIL_QUEUE_NAME, jobId: job.id, jobName: job.name }, "Unknown email job ignored");
     return { ignored: true };
   },
   {
     connection: redis,
-    concurrency: env.queueConcurrency,
+    concurrency: env.workerConcurrency.email,
   }
 );
 const heartbeat = await startWorkerHeartbeat({
@@ -56,7 +61,7 @@ worker.on("failed", (job, error) => {
 });
 
 logger.info(
-  { queue: EMAIL_QUEUE_NAME, concurrency: env.queueConcurrency, workerId: heartbeat.workerId },
+  { queue: EMAIL_QUEUE_NAME, concurrency: env.workerConcurrency.email, workerId: heartbeat.workerId },
   "Email worker started"
 );
 

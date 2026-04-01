@@ -1,0 +1,5 @@
+INSERT INTO "CmsContent" ("section", "slug", "title", "excerpt", "contentMarkdown", "status", "sortOrder", "publishedAt")
+VALUES
+  ('ABOUT', 'about-lensaya', 'About Lensaya', 'Lensaya helps photographers present premium work and convert inquiries clearly.', '## About Lensaya\n\nLensaya is a portfolio platform built for photographers who want premium presentation with practical booking workflows.\n\n### What we focus on\n\n- Clean portfolio publishing\n- Structured packages and pricing\n- Public discovery and conversion optimization\n- Manageable operations from one dashboard', 'PUBLISHED', 0, CURRENT_TIMESTAMP),
+  ('CONTACT', 'contact-lensaya', 'Contact Lensaya', 'Reach support for account, billing, and product questions.', '## Contact Lensaya\n\nFor account-specific issues, contact support from your dashboard for the fastest response.\n\n### General inquiries\n\n- Product and onboarding questions\n- Billing and subscription clarifications\n- Feature request discussions\n\n### Response window\n\nWe typically respond within one business day for standard support requests.', 'PUBLISHED', 0, CURRENT_TIMESTAMP)
+ON CONFLICT ("section", "slug") DO NOTHING;

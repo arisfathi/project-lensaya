@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { DollarSign, TrendingUp, CreditCard, CheckCircle, AlertCircle } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { AdminLayout } from "../../layouts/AdminLayout";
+import { AdminLayout } from "../../components/admin/AdminLayout";
 import { LoadingCard } from "../../components/ui/LoadingSpinner";
 import { adminApi, getApiErrorMessage } from "../../lib/api";
 import { useToast } from "../../contexts/ToastContext";
@@ -285,3 +285,4 @@ export default function Revenue() {
     </AdminLayout>
   );
 }
+

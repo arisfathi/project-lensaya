@@ -123,8 +123,8 @@ export function PortfolioUploader({ services, onClose, onUploadSuccess }: Portfo
       filesRef.current.forEach((item) => {
         URL.revokeObjectURL(item.preview);
         if (item.assetId && item.cleanupEligible && item.status !== "done") {
-          void uploadsApi.remove(item.assetId).catch((cleanupError) => {
-            console.error("Failed to cleanup upload asset", cleanupError);
+          void uploadsApi.remove(item.assetId).catch(() => {
+            // Cleanup best-effort during unmount.
           });
         }
       });
@@ -157,8 +157,7 @@ export function PortfolioUploader({ services, onClose, onUploadSuccess }: Portfo
     try {
       await uploadsApi.remove(assetId);
       return true;
-    } catch (cleanupError) {
-      console.error("Failed to cleanup upload asset", cleanupError);
+    } catch {
       return false;
     }
   }, []);
@@ -314,7 +313,6 @@ export function PortfolioUploader({ services, onClose, onUploadSuccess }: Portfo
 
         return true;
       } catch (err) {
-        console.error("Portfolio upload failed", err);
 
         if (!currentAssetId) {
           const latestItem = filesRef.current.find((entry) => entry.id === item.id);

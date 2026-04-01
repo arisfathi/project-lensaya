@@ -189,6 +189,10 @@ export const customDomainService = {
   },
 
   async runVerification({ domain, currentStatus }) {
+    if (env.isProduction && env.customDomains.verificationMode !== "dns") {
+      throw new ApiError(503, "Custom domain verification must run in DNS mode in production");
+    }
+
     if (env.customDomains.verificationMode === "mock") {
       if (shouldUseMockFailure(domain)) {
         return buildFailureResult({

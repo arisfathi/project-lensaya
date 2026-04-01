@@ -68,22 +68,6 @@ test("POST /billing/webhook links transaction to subscription and user on succes
   await withMethodPatches(
     [
       {
-        target: prisma.subscriptionPlan,
-        method: "findUnique",
-        fn: async ({ where }) => {
-          if (where?.name === "PRO") {
-            return {
-              id: "22222222-2222-4222-8222-222222222222",
-              name: "PRO",
-              currency: "USD",
-              price: 79,
-              trialDays: 0,
-            };
-          }
-          return null;
-        },
-      },
-      {
         target: prisma.transaction,
         method: "findUnique",
         fn: async () => null,
@@ -196,22 +180,6 @@ test("POST /billing/webhook ignores duplicate succeeded webhook side effects", a
   await withMethodPatches(
     [
       {
-        target: prisma.subscriptionPlan,
-        method: "findUnique",
-        fn: async ({ where }) => {
-          if (where?.name === "PRO") {
-            return {
-              id: "22222222-2222-4222-8222-222222222222",
-              name: "PRO",
-              currency: "USD",
-              price: 79,
-              trialDays: 0,
-            };
-          }
-          return null;
-        },
-      },
-      {
         target: prisma.transaction,
         method: "findUnique",
         fn: async () => ({ status: "SUCCEEDED", subscriptionId: "subscription-dup-1" }),
@@ -304,22 +272,6 @@ test("POST /billing/webhook does not regress succeeded transaction when failed a
   await withMethodPatches(
     [
       {
-        target: prisma.subscriptionPlan,
-        method: "findUnique",
-        fn: async ({ where }) => {
-          if (where?.name === "PRO") {
-            return {
-              id: "22222222-2222-4222-8222-222222222222",
-              name: "PRO",
-              currency: "USD",
-              price: 79,
-              trialDays: 0,
-            };
-          }
-          return null;
-        },
-      },
-      {
         target: prisma.transaction,
         method: "findUnique",
         fn: async () => ({ status: "SUCCEEDED", subscriptionId: "subscription-order-1" }),
@@ -404,22 +356,6 @@ test("POST /billing/webhook does not mark past due before current period ends", 
 
   await withMethodPatches(
     [
-      {
-        target: prisma.subscriptionPlan,
-        method: "findUnique",
-        fn: async ({ where }) => {
-          if (where?.name === "PRO") {
-            return {
-              id: "22222222-2222-4222-8222-222222222222",
-              name: "PRO",
-              currency: "USD",
-              price: 79,
-              trialDays: 0,
-            };
-          }
-          return null;
-        },
-      },
       {
         target: prisma.transaction,
         method: "findUnique",
@@ -538,22 +474,6 @@ test("POST /billing/webhook ignores stale success event for previously canceled 
 
   await withMethodPatches(
     [
-      {
-        target: prisma.subscriptionPlan,
-        method: "findUnique",
-        fn: async ({ where }) => {
-          if (where?.name === "PRO") {
-            return {
-              id: "22222222-2222-4222-8222-222222222222",
-              name: "PRO",
-              currency: "USD",
-              price: 79,
-              trialDays: 0,
-            };
-          }
-          return null;
-        },
-      },
       {
         target: prisma.transaction,
         method: "findUnique",

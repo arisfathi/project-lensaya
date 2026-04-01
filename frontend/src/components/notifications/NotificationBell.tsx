@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bell } from "lucide-react";
-import { notificationsApi, getApiErrorMessage } from "../../lib/api";
+import { isApiAccessError, notificationsApi, getApiErrorMessage } from "../../lib/api";
 import { useToast } from "../../contexts/ToastContext";
 
 type NotificationItem = {
@@ -28,6 +28,7 @@ export function NotificationBell({
   buttonClassName = "relative p-2 hover:bg-gray-100 rounded-lg",
   iconClassName = "w-5 h-5 text-slate-600",
 }: NotificationBellProps) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [markingAll, setMarkingAll] = useState(false);
@@ -46,7 +47,7 @@ export function NotificationBell({
         setUnreadCount(result.unreadCount || 0);
         setNotifications((result.items || []) as NotificationItem[]);
       } catch (err) {
-        if (!mounted) return;
+        if (!mounted || isApiAccessError(err)) return;
         error(getApiErrorMessage(err, "Failed to load notifications"));
       } finally {
         if (mounted) {
@@ -68,6 +69,7 @@ export function NotificationBell({
       setNotifications((current) => current.map((item) => (item.id === id ? { ...item, read: true } : item)));
       setUnreadCount((count) => Math.max(0, count - 1));
     } catch (err) {
+      if (isApiAccessError(err)) return;
       error(getApiErrorMessage(err, "Failed to update notification"));
     }
   };
@@ -83,16 +85,46 @@ export function NotificationBell({
         success(`${result.markedCount} notification${result.markedCount === 1 ? "" : "s"} marked as read.`);
       }
     } catch (err) {
-      error(getApiErrorMessage(err, "Failed to mark all notifications as read"));
+      if (!isApiAccessError(err)) {
+        error(getApiErrorMessage(err, "Failed to mark all notifications as read"));
+      }
     } finally {
       setMarkingAll(false);
     }
   };
 
+  useEffect(() => {
+    if (!panelOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (rootRef.current?.contains(target)) return;
+      setPanelOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPanelOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [panelOpen]);
+
   return (
-    <div className="relative">
+    <div className="relative" ref={rootRef}>
       <button
         className={buttonClassName}
+        type="button"
+        aria-expanded={panelOpen}
+        aria-label="Open notifications"
         onClick={() => {
           setPanelOpen((open) => !open);
         }}
@@ -106,7 +138,7 @@ export function NotificationBell({
       </button>
 
       {panelOpen ? (
-        <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-50">
+        <div className="fixed inset-x-2 top-16 mt-2 w-auto bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-50 sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-80">
           <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between gap-3">
             <p className="text-sm font-semibold text-slate-900">Notifications</p>
             <button
@@ -140,9 +172,9 @@ export function NotificationBell({
                 >
                   <div className="flex items-start gap-3">
                     <span className={`mt-2 w-2 h-2 rounded-full ${item.read ? "bg-gray-300" : "bg-cyan-500"}`} />
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">{item.title || "Notification"}</p>
-                      <p className="text-sm text-slate-600">{item.body || "New activity in your account."}</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-slate-900 wrap-break-word">{item.title || "Notification"}</p>
+                      <p className="text-sm text-slate-600 wrap-break-word">{item.body || "New activity in your account."}</p>
                       <p className="text-xs text-slate-500 mt-1">{formatDateTime(item.createdAt)}</p>
                     </div>
                   </div>

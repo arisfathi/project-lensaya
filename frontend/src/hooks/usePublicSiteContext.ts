@@ -66,6 +66,7 @@ export const usePublicSiteContext = (enabled = true) => {
 
   useEffect(() => {
     if (!hostCandidate) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- pre-existing behavior; isolated in Phase 1.5
       setState(createDefaultState(enabled, host));
       return;
     }

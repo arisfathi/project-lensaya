@@ -29,6 +29,26 @@ export const emailService = {
     });
   },
 
+  async sendVerificationEmail(email, fullName, token) {
+    const baseUrl = String(env.appUrl || env.publicAppUrl || env.frontendUrl || "").replace(/\/+$/, "");
+    if (!baseUrl) {
+      throw new Error("APP_URL is not configured for verification emails");
+    }
+    const verificationUrl = `${baseUrl}/verify-email?token=${encodeURIComponent(token)}`;
+
+    return this.send({
+      to: email,
+      subject: "Verify your email address",
+      html: `
+        <p>Hi ${fullName},</p>
+        <p>Verify your email address to unlock your Lensaya dashboard.</p>
+        <p><a href="${verificationUrl}">Verify your email</a></p>
+        <p>If the button does not work, use this token: <b>${token}</b></p>
+      `,
+      text: `Verify your email: ${verificationUrl}\n\nIf needed, your token is: ${token}`,
+    });
+  },
+
   async sendPasswordReset(email, token) {
     const baseUrl = String(env.appUrl || env.publicAppUrl || env.frontendUrl || "").replace(/\/+$/, "");
     if (!baseUrl) {

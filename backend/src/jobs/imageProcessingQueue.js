@@ -1,10 +1,12 @@
 import { logger } from "../config/logger.js";
 import { captureException } from "../config/sentry.js";
+import { env } from "../config/env.js";
 import { createQueue, isQueueAvailable } from "./queueFactory.js";
 import { processImageResizeJob } from "./processors/imageProcessingProcessor.js";
 
 export const IMAGE_PROCESSING_QUEUE_NAME = "imageProcessingQueue";
 export const imageProcessingQueue = createQueue(IMAGE_PROCESSING_QUEUE_NAME);
+const canRunInlineFallback = !env.isProduction;
 
 const runInlineImageProcessing = async (payload, reason) => {
   logger.warn(
@@ -39,7 +41,7 @@ const runInlineImageProcessing = async (payload, reason) => {
 
 export const enqueueImageProcessing = async (payload) => {
   const options = {
-    inlineFallback: payload?.inlineFallback !== false,
+    inlineFallback: canRunInlineFallback && payload?.inlineFallback !== false,
     jobId: payload?.jobId || (payload?.assetId ? `asset:${payload.assetId}` : undefined),
   };
 

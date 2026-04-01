@@ -1,0 +1,66 @@
+﻿.team-section-slider .slick-track {
+  display: flex;
+}
+
+.team-section-slider .slick-slide {
+  height: auto;
+}
+
+.team-section-slider .slick-slide > div {
+  height: 100%;
+}
+.team-section-slider .slick-list {
+  margin: 0 -8px;
+}
+
+.team-section-slider .slick-slide {
+  opacity: 0.4;
+  transition: opacity 300ms ease;
+}
+
+.team-section-slider .slick-slide.slick-active {
+  opacity: 1;
+}
+
+.team-section-slider .slick-dots {
+  bottom: -30px;
+}
+
+.team-section-slider .slick-dots li {
+  width: 24px;
+  margin: 0 4px;
+}
+
+.team-section-slider .slick-dots li button {
+  width: 24px;
+  height: 8px;
+  padding: 0;
+}
+
+.team-section-slider .slick-dots li button:before {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background-color: #cbd5e1;
+  content: '';
+  opacity: 1;
+  transition: transform 200ms ease, background-color 200ms ease, width 250ms ease;
+}
+
+.team-section-slider .slick-dots li button:hover:before {
+  transform: scale(1.2);
+  background-color: #94a3b8;
+}
+
+.team-section-slider .slick-dots li.slick-active button:before {
+  width: 24px;
+  background-color: #06b6d4;
+}
+
+@media (max-width: 639px) {
+  .team-section-slider .slick-dots {
+    bottom: -20px;
+  }
+}
+
+

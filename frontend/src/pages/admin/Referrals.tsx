@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Gift, Users, TrendingUp, Award } from "lucide-react";
+import { Gift, Users, TrendingUp, Award, ShieldAlert } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { AdminLayout } from "../../layouts/AdminLayout";
+import { AdminLayout } from "../../components/admin/AdminLayout";
 import { LoadingCard } from "../../components/ui/LoadingSpinner";
 import { adminApi, getApiErrorMessage } from "../../lib/api";
 import { useToast } from "../../contexts/ToastContext";
@@ -10,6 +10,7 @@ type ReferralsOverview = {
   stats: {
     totalReferrals: number;
     conversions: number;
+    repeatVisitorClicks: number;
   };
   growthSeries: Array<{ month: string; referrals: number; conversions: number }>;
 };
@@ -46,7 +47,7 @@ const monthFallback = () => {
 export default function Referrals() {
   const [loading, setLoading] = useState(true);
   const [overview, setOverview] = useState<ReferralsOverview>({
-    stats: { totalReferrals: 0, conversions: 0 },
+    stats: { totalReferrals: 0, conversions: 0, repeatVisitorClicks: 0 },
     growthSeries: [],
   });
   const [topReferrers, setTopReferrers] = useState<TopReferrer[]>([]);
@@ -66,7 +67,7 @@ export default function Referrals() {
 
         setOverview(
           (overviewResult || {
-            stats: { totalReferrals: 0, conversions: 0 },
+            stats: { totalReferrals: 0, conversions: 0, repeatVisitorClicks: 0 },
             growthSeries: [],
           }) as ReferralsOverview
         );
@@ -129,6 +130,13 @@ export default function Referrals() {
       bgColor: "bg-purple-50",
       iconColor: "text-purple-500",
     },
+    {
+      name: "Repeat Click Visitors",
+      value: new Intl.NumberFormat().format(Number(overview.stats.repeatVisitorClicks || 0)),
+      icon: ShieldAlert,
+      bgColor: "bg-amber-50",
+      iconColor: "text-amber-600",
+    },
   ];
 
   if (loading) {
@@ -146,7 +154,7 @@ export default function Referrals() {
         <p className="text-slate-600">Referral program performance and top referrers</p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6 mb-8">
         {stats.map((stat) => {
           const Icon = stat.icon;
           return (
@@ -222,3 +230,4 @@ export default function Referrals() {
     </AdminLayout>
   );
 }
+

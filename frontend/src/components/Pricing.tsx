@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { billingApi, getApiErrorMessage } from '../lib/api';
+import { publicApi } from '../lib/api';
 
 type BillingPlanId = 'FREE' | 'PRO' | 'STUDIO';
 
@@ -104,7 +104,7 @@ export function Pricing() {
     const loadPlans = async () => {
       setLoading(true);
       try {
-        const result = await billingApi.plans();
+        const result = await publicApi.plans();
         if (!mounted) return;
 
         const ordered = result.plans
@@ -113,9 +113,10 @@ export function Pricing() {
 
         setPlans(ordered as BillingPlan[]);
         setErrorMessage(null);
-      } catch (error) {
+      } catch {
         if (!mounted) return;
-        setErrorMessage(getApiErrorMessage(error, 'Unable to load pricing right now.'));
+        setPlans([]);
+        setErrorMessage('Unable to load subscriptions plan right now.');
       } finally {
         if (mounted) {
           setLoading(false);
@@ -245,3 +246,11 @@ export function Pricing() {
     </section>
   );
 }
+
+
+
+
+
+
+
+

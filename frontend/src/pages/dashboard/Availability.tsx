@@ -1,191 +1,46 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  AlertCircle,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Clock3,
-  Save,
-  XCircle,
-} from "lucide-react";
-import { DashboardLayout } from "../../layouts/DashboardLayout";
+import { DashboardLayout } from "../../components/dashboard/DashboardLayout";
 import { Button } from "../../components/ui/Button";
 import { LoadingCard } from "../../components/ui/LoadingSpinner";
 import { useToast } from "../../contexts/ToastContext";
-import { availabilityApi, bookingsApi, getApiErrorMessage } from "../../lib/api";
-
-type DayStatus = "available" | "booked";
-type UpdateStatus = "AVAILABLE" | "BOOKED";
-type BookingLeadStatus = "PENDING" | "CONFIRMED" | "DECLINED" | "COMPLETED" | "CANCELED" | "EXPIRED";
-type LeadStatusAction = {
-  label: string;
-  nextStatus: Exclude<BookingLeadStatus, "PENDING">;
-  variant: "primary" | "secondary" | "danger";
-};
-type BookingLead = {
-  id: string;
-  status: string;
-  clientName: string | null;
-  clientEmail: string | null;
-  clientPhone: string | null;
-  message: string | null;
-  preferredDate: string | null;
-  createdAt: string;
-  service: { id: string; name: string } | null;
-  package: { id: string; name: string } | null;
-};
-type BookingLeadsPagination = {
-  page: number;
-  limit: number;
-  total: number;
-  totalPages: number;
-};
-
-const daysOfWeek = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const months = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
-const toDayStatus = (value: unknown): DayStatus => {
-  const normalized = String(value || "").trim().toLowerCase();
-  return normalized === "booked" || normalized === "unavailable" || normalized === "blocked"
-    ? "booked"
-    : "available";
-};
-
-const toUpdateStatus = (value: DayStatus): UpdateStatus => (value === "booked" ? "BOOKED" : "AVAILABLE");
-const isBookedStatus = (value: DayStatus) => value === "booked";
-const getStatusClasses = (status: DayStatus, options: { isLockedBooked: boolean }) => {
-  if (status === "booked") {
-    return `bg-red-100 border-red-400 text-red-700 ${options.isLockedBooked ? "cursor-not-allowed" : "hover:bg-red-200"}`;
-  }
-  return "bg-green-100 border-green-400 text-green-700 hover:bg-green-200";
-};
-
-const toMonthKey = (date: Date) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-
-const toDateKey = (value: string | Date) => {
-  const date = value instanceof Date ? value : new Date(value);
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(date.getUTCDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-
-const toLocalDateKey = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-
-const formatDateTime = (value: string | null | undefined) => {
-  if (!value) return "N/A";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "N/A";
-  return date.toLocaleString();
-};
-
-const toSafePositiveInt = (value: unknown, fallback: number) => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return fallback;
-  const normalized = Math.floor(parsed);
-  return normalized > 0 ? normalized : fallback;
-};
-
-const defaultBookingLeadsPagination: BookingLeadsPagination = {
-  page: 1,
-  limit: 10,
-  total: 0,
-  totalPages: 1,
-};
-
-const toBookingLeadsPagination = (
-  value: Record<string, unknown> | undefined,
-  fallback: BookingLeadsPagination
-): BookingLeadsPagination => ({
-  page: toSafePositiveInt(value?.page, fallback.page),
-  limit: toSafePositiveInt(value?.limit, fallback.limit),
-  total: Math.max(0, Number(value?.total || fallback.total || 0)),
-  totalPages: toSafePositiveInt(value?.totalPages, fallback.totalPages),
-});
-
-const toLeadStatus = (value: string | null | undefined) =>
-  String(value || "PENDING").trim().toUpperCase();
-
-const formatLeadStatusLabel = (value: string | null | undefined) =>
-  toLeadStatus(value)
-    .split("_")
-    .filter(Boolean)
-    .map((part) => `${part.charAt(0)}${part.slice(1).toLowerCase()}`)
-    .join(" ");
-
-const getLeadStatusConfig = (status: string) => {
-  const normalized = toLeadStatus(status);
-  if (normalized === "CONFIRMED" || normalized === "COMPLETED") {
-    return {
-      label: formatLeadStatusLabel(normalized),
-      badgeClass: "bg-green-50 text-green-700 border-green-200",
-      iconClass: "text-green-600",
-      icon: CheckCircle2,
-    };
-  }
-
-  if (normalized === "DECLINED" || normalized === "CANCELED") {
-    return {
-      label: formatLeadStatusLabel(normalized),
-      badgeClass: "bg-red-50 text-red-700 border-red-200",
-      iconClass: "text-red-600",
-      icon: XCircle,
-    };
-  }
-
-  if (normalized === "EXPIRED") {
-    return {
-      label: formatLeadStatusLabel(normalized),
-      badgeClass: "bg-slate-50 text-slate-700 border-slate-200",
-      iconClass: "text-slate-600",
-      icon: XCircle,
-    };
-  }
-
-  return {
-    label: formatLeadStatusLabel(normalized),
-    badgeClass: "bg-amber-50 text-amber-700 border-amber-200",
-    iconClass: "text-amber-600",
-    icon: Clock3,
-  };
-};
-
-const getLeadStatusActions = (status: string): LeadStatusAction[] => {
-  const normalized = toLeadStatus(status) as BookingLeadStatus;
-  if (normalized === "PENDING") {
-    return [
-      { label: "Confirm", nextStatus: "CONFIRMED", variant: "primary" },
-      { label: "Decline", nextStatus: "DECLINED", variant: "danger" },
-    ];
-  }
-
-  if (normalized === "CONFIRMED") {
-    return [
-      { label: "Complete", nextStatus: "COMPLETED", variant: "primary" },
-      { label: "Cancel", nextStatus: "CANCELED", variant: "secondary" },
-    ];
-  }
-
-  return [];
-};
+import { useAuth } from "../../contexts/AuthContext";
+import { analyticsApi, availabilityApi, bookingsApi, getApiErrorMessage, isApiAccessError } from "../../lib/api";
+import {
+  AVAILABILITY_LEGEND,
+  DEFAULT_BOOKING_LEADS_PAGINATION,
+} from "./availability/constants";
+import { AvailabilityCalendarCard } from "./availability/components/AvailabilityCalendarCard";
+import { BookingLeadsFilterHeader } from "./availability/components/BookingLeadsFilterHeader";
+import { AvailabilitySummaryCard } from "./availability/components/AvailabilitySummaryCard";
+import { BookingLeadsList } from "./availability/components/BookingLeadsList";
+import { LeadInsightsPanels } from "./availability/components/LeadInsightsPanels";
+import { useLeadTrendData } from "./availability/hooks/useLeadTrendData";
+import { usePendingReminderSummary } from "./availability/hooks/usePendingReminderSummary";
+import type {
+  BookingLead,
+  BookingLeadFilters,
+  BookingLeadPeriodPreset,
+  BookingLeadsPagination,
+  DayStatus,
+  FollowUpTemplate,
+  LeadInsights,
+  LeadStatusAction,
+  LeadUpgradeNudge,
+  LeadWindow,
+  UpdateStatus,
+} from "./availability/types";
+import {
+  buildPresetDateRange,
+  fillFollowUpTemplate,
+  formatLeadStatusLabel,
+  normalizePhoneForWhatsApp,
+  toBookingLeadsPagination,
+  toDateKey,
+  toDayStatus,
+  toLocalDateKey,
+  toMonthKey,
+  toUpdateStatus,
+} from "./availability/utils";
 
 export default function Availability() {
   const [currentDate, setCurrentDate] = useState(() => {
@@ -198,14 +53,33 @@ export default function Availability() {
   const [initialStatusMap, setInitialStatusMap] = useState<Record<string, DayStatus>>({});
   const statusMapRef = useRef<Record<string, DayStatus>>({});
   const initialStatusMapRef = useRef<Record<string, DayStatus>>({});
-  const [lockedBookedDates, setLockedBookedDates] = useState<Set<string>>(new Set());
   const [bookingLeadsLoading, setBookingLeadsLoading] = useState(true);
   const [bookingLeads, setBookingLeads] = useState<BookingLead[]>([]);
   const [bookingLeadsPage, setBookingLeadsPage] = useState(1);
   const [bookingLeadsPagination, setBookingLeadsPagination] = useState<BookingLeadsPagination>(
-    defaultBookingLeadsPagination
+    DEFAULT_BOOKING_LEADS_PAGINATION
   );
   const [bookingLeadActionId, setBookingLeadActionId] = useState<string | null>(null);
+  const [bookingLeadNotesDrafts, setBookingLeadNotesDrafts] = useState<Record<string, string>>({});
+  const [bookingLeadNotesSavingId, setBookingLeadNotesSavingId] = useState<string | null>(null);
+  const [bookingLeadFilters, setBookingLeadFilters] = useState<BookingLeadFilters>({
+    status: "",
+    source: "",
+    search: "",
+    periodPreset: "all",
+    from: "",
+    to: "",
+  });
+  const [showLeadFiltersUpgrade, setShowLeadFiltersUpgrade] = useState(false);
+  const [showLeadExportUpgrade, setShowLeadExportUpgrade] = useState(false);
+  const [bookingLeadInsights, setBookingLeadInsights] = useState<LeadInsights | null>(null);
+  const [bookingLeadWindow, setBookingLeadWindow] = useState<LeadWindow | null>(null);
+  const [followUpTemplates, setFollowUpTemplates] = useState<FollowUpTemplate[]>([]);
+  const [selectedFollowUpTemplateId, setSelectedFollowUpTemplateId] = useState<string>("");
+  const [leadUpgradeNudges, setLeadUpgradeNudges] = useState<LeadUpgradeNudge[]>([]);
+  const [exportingLeads, setExportingLeads] = useState(false);
+  const [leadTrendWindow, setLeadTrendWindow] = useState<"7d" | "30d">("7d");
+  const trackedLeadNudgesRef = useRef<string>("");
   const bookingLeadsLimit = 10;
 
   useEffect(() => {
@@ -217,6 +91,15 @@ export default function Availability() {
   }, [initialStatusMap]);
 
   const { success, error, info } = useToast();
+
+  const { user } = useAuth();
+  const leadFeatures = user?.leadFeatures;
+  const canUseLeadFilters = Boolean(leadFeatures?.filters);
+  const canExportLeads = Boolean(leadFeatures?.export);
+  const canUseWhatsAppFollowUp = Boolean(leadFeatures?.channels?.whatsapp);
+  const canUseEmailFollowUp = Boolean(leadFeatures?.channels?.email);
+  const leadFiltersUpgradeTarget = leadFeatures?.upgradeTarget || "PRO";
+  const leadNudgeUpgradeTarget = bookingLeadInsights?.locked?.upgradeTarget || leadFiltersUpgradeTarget;
 
   const monthKey = useMemo(() => toMonthKey(currentDate), [currentDate]);
   const todayKey = useMemo(() => toLocalDateKey(new Date()), []);
@@ -243,11 +126,6 @@ export default function Availability() {
     (day: number) => getDayKey(day) < todayKey,
     [getDayKey, todayKey]
   );
-  const isLockedBookedDay = useCallback(
-    (day: number) => lockedBookedDates.has(getDayKey(day)),
-    [getDayKey, lockedBookedDates]
-  );
-
   const calendarCells = useMemo(() => {
     const cells: Array<number | null> = Array.from({ length: firstDay }, () => null);
     for (let day = 1; day <= daysInMonth; day += 1) {
@@ -269,30 +147,6 @@ export default function Availability() {
     return count;
   }, [daysInMonth, getDayStatus, getInitialDayStatus]);
 
-  const availabilityLegend = useMemo(
-    () => [
-      {
-        key: "available",
-        label: "Available",
-        swatchClass: "bg-green-100 border-green-400",
-        textClass: "text-green-700",
-      },
-      {
-        key: "booked",
-        label: "Booked",
-        swatchClass: "bg-red-100 border-red-400",
-        textClass: "text-red-700",
-      },
-      {
-        key: "past",
-        label: "Past Dates",
-        swatchClass: "bg-gray-200 border-gray-400",
-        textClass: "text-slate-600",
-      },
-    ],
-    []
-  );
-
   const loadMonth = useCallback(
     async ({ preserveEdits = false, showLoading = true }: { preserveEdits?: boolean; showLoading?: boolean } = {}) => {
       if (showLoading) {
@@ -312,11 +166,11 @@ export default function Availability() {
           baseMap[key] = toDayStatus(day.status);
         }
 
-        const locked = new Set<string>();
         for (const date of bookingCalendar.bookedDates || []) {
           const key = toDateKey(date);
-          baseMap[key] = "booked";
-          locked.add(key);
+          if (!(key in baseMap)) {
+            baseMap[key] = "booked";
+          }
         }
 
         const nextStatusMap: Record<string, DayStatus> = { ...baseMap };
@@ -326,7 +180,7 @@ export default function Availability() {
             const currentStatus = toDayStatus(currentValue);
             const baselineStatus = toDayStatus(initialStatusMapRef.current[dateKey] || "available");
 
-            if (currentStatus !== baselineStatus && !locked.has(dateKey)) {
+            if (currentStatus !== baselineStatus) {
               nextStatusMap[dateKey] = currentStatus;
             }
           }
@@ -334,8 +188,10 @@ export default function Availability() {
 
         setStatusMap(nextStatusMap);
         setInitialStatusMap(baseMap);
-        setLockedBookedDates(locked);
       } catch (err) {
+        if (isApiAccessError(err)) {
+          return;
+        }
         error(getApiErrorMessage(err, "Failed to load availability"));
       } finally {
         if (showLoading) {
@@ -357,8 +213,21 @@ export default function Availability() {
       }
 
       try {
-        const bookingList = await bookingsApi.list({ page: bookingLeadsPage, limit: bookingLeadsLimit });
+        const bookingList = await bookingsApi.list({
+          page: bookingLeadsPage,
+          limit: bookingLeadsLimit,
+          ...(bookingLeadFilters.status ? { status: bookingLeadFilters.status } : {}),
+          ...(canUseLeadFilters && bookingLeadFilters.source ? { source: bookingLeadFilters.source } : {}),
+          ...(canUseLeadFilters && bookingLeadFilters.search.trim()
+            ? { search: bookingLeadFilters.search.trim() }
+            : {}),
+          ...(bookingLeadFilters.from ? { from: bookingLeadFilters.from } : {}),
+          ...(bookingLeadFilters.to ? { to: bookingLeadFilters.to } : {}),
+        });
         const items = ((bookingList.items || []) as BookingLead[]).slice().sort((a, b) => {
+          const scoreDiff = Number(b.leadScore || 0) - Number(a.leadScore || 0);
+          if (scoreDiff !== 0) return scoreDiff;
+
           const left = new Date(a.createdAt || 0).getTime();
           const right = new Date(b.createdAt || 0).getTime();
           return right - left;
@@ -367,15 +236,34 @@ export default function Availability() {
         const nextPagination = toBookingLeadsPagination(
           (bookingList.pagination || undefined) as Record<string, unknown> | undefined,
           {
-            ...defaultBookingLeadsPagination,
+            ...DEFAULT_BOOKING_LEADS_PAGINATION,
             page: bookingLeadsPage,
             limit: bookingLeadsLimit,
           }
         );
 
+        const nextDrafts: Record<string, string> = {};
+        for (const item of items) {
+          nextDrafts[item.id] = String(item.notes || "");
+        }
+
         setBookingLeads(items);
         setBookingLeadsPagination(nextPagination);
+        setBookingLeadNotesDrafts(nextDrafts);
+        setBookingLeadInsights((bookingList.leadInsights || null) as LeadInsights | null);
+        setBookingLeadWindow((bookingList.leadWindow || null) as LeadWindow | null);
+        const nextTemplates = (bookingList.followUpTemplates || []) as FollowUpTemplate[];
+        setFollowUpTemplates(nextTemplates);
+        setLeadUpgradeNudges((bookingList.upgradeNudges || []) as LeadUpgradeNudge[]);
+        setSelectedFollowUpTemplateId((current) => {
+          if (!nextTemplates.length) return "";
+          if (current && nextTemplates.some((template) => template.id === current)) return current;
+          return nextTemplates[0]?.id || "";
+        });
       } catch (err) {
+        if (isApiAccessError(err)) {
+          return;
+        }
         error(getApiErrorMessage(err, "Failed to load booking leads"));
       } finally {
         if (showLoading) {
@@ -383,20 +271,36 @@ export default function Availability() {
         }
       }
     },
-    [bookingLeadsLimit, bookingLeadsPage, error]
+    [bookingLeadsLimit, bookingLeadsPage, bookingLeadFilters.from, bookingLeadFilters.search, bookingLeadFilters.source, bookingLeadFilters.status, bookingLeadFilters.to, canUseLeadFilters, error]
   );
 
   useEffect(() => {
     void loadBookingLeads();
   }, [loadBookingLeads]);
 
+  useEffect(() => {
+    setBookingLeadsPage(1);
+  }, [bookingLeadFilters.status, bookingLeadFilters.source, bookingLeadFilters.search, bookingLeadFilters.from, bookingLeadFilters.to]);
+
+  useEffect(() => {
+    if (!leadUpgradeNudges.length) return;
+    const key = leadUpgradeNudges.map((item) => item.id).join("|");
+    if (!key || trackedLeadNudgesRef.current === key) return;
+    trackedLeadNudgesRef.current = key;
+
+    void analyticsApi
+      .track({
+        action: "lead_nudges_viewed",
+        source: "availability_leads",
+        nudgeIds: leadUpgradeNudges.map((item) => item.id),
+      })
+      .catch(() => {
+        // Non-blocking tracking
+      });
+  }, [leadUpgradeNudges]);
+
   const handleToggleDay = (day: number) => {
     if (isPastDay(day)) {
-      return;
-    }
-
-    if (isLockedBookedDay(day)) {
-      info("This date already has bookings and cannot be changed.");
       return;
     }
 
@@ -459,6 +363,173 @@ export default function Availability() {
     }
   };
 
+  const handleLeadPeriodPresetChange = (preset: BookingLeadPeriodPreset) => {
+    const range = buildPresetDateRange(preset);
+    setBookingLeadFilters((current) => ({
+      ...current,
+      periodPreset: preset,
+      from: range.from,
+      to: range.to,
+    }));
+    setBookingLeadsPage(1);
+  };
+
+  const handleLeadFilterChange = <K extends keyof BookingLeadFilters>(key: K, value: BookingLeadFilters[K]) => {
+    if (!canUseLeadFilters && (key === "source" || key === "search")) {
+      setShowLeadFiltersUpgrade(true);
+      info(`Upgrade to ${leadFiltersUpgradeTarget} to use lead filters.`);
+      return;
+    }
+
+    setBookingLeadFilters((current) => ({
+      ...current,
+      [key]: value,
+    }));
+    setBookingLeadsPage(1);
+  };
+
+  const handleExportLeads = async () => {
+    if (!canExportLeads) {
+      setShowLeadExportUpgrade(true);
+      info(`Upgrade to ${leadFiltersUpgradeTarget} to export leads.`);
+      return;
+    }
+
+    try {
+      setExportingLeads(true);
+      const result = await bookingsApi.exportCsv({
+        ...(bookingLeadFilters.status ? { status: bookingLeadFilters.status } : {}),
+        ...(canUseLeadFilters && bookingLeadFilters.source ? { source: bookingLeadFilters.source } : {}),
+        ...(canUseLeadFilters && bookingLeadFilters.search.trim()
+          ? { search: bookingLeadFilters.search.trim() }
+          : {}),
+        ...(bookingLeadFilters.from ? { from: bookingLeadFilters.from } : {}),
+        ...(bookingLeadFilters.to ? { to: bookingLeadFilters.to } : {}),
+      });
+
+      const url = window.URL.createObjectURL(result.blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = result.filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(url);
+      success("Lead export downloaded.");
+    } catch (err) {
+      error(getApiErrorMessage(err, "Failed to export leads"));
+    } finally {
+      setExportingLeads(false);
+    }
+  };
+
+  const handleSaveLeadNotes = async (lead: BookingLead) => {
+    const rawDraft = bookingLeadNotesDrafts[lead.id] ?? "";
+    const normalizedDraft = rawDraft.trim();
+    const currentNotes = String(lead.notes || "").trim();
+
+    if (normalizedDraft === currentNotes) {
+      info("No note changes to save.");
+      return;
+    }
+
+    try {
+      setBookingLeadNotesSavingId(lead.id);
+      await bookingsApi.updateNotes(lead.id, normalizedDraft || null);
+      success("Lead notes updated.");
+      await loadBookingLeads({ showLoading: false });
+    } catch (err) {
+      error(getApiErrorMessage(err, "Failed to update lead notes"));
+    } finally {
+      setBookingLeadNotesSavingId(null);
+    }
+  };
+
+  const selectedFollowUpTemplate = useMemo(
+    () => followUpTemplates.find((template) => template.id === selectedFollowUpTemplateId) || null,
+    [followUpTemplates, selectedFollowUpTemplateId]
+  );
+
+  const handleUpgradeFromLeads = async (context: string) => {
+    try {
+      await analyticsApi.track({
+        action: "lead_upgrade_cta_clicked",
+        source: "availability_leads",
+        context,
+        targetPlan: leadNudgeUpgradeTarget,
+      });
+    } catch {
+      // Non-blocking tracking
+    }
+
+    window.location.href = "/dashboard/pricing";
+  };
+
+  const handleFollowUpLead = async (lead: BookingLead, channel: "whatsapp" | "email") => {
+    if (!selectedFollowUpTemplate) {
+      info("No follow-up template available.");
+      return;
+    }
+
+    if (channel === "whatsapp") {
+      const phone = normalizePhoneForWhatsApp(lead.clientPhone);
+      if (!phone) {
+        info("Lead has no valid WhatsApp number.");
+        return;
+      }
+
+      const message = fillFollowUpTemplate(selectedFollowUpTemplate.whatsapp, lead, {
+        studioName: user?.fullName || user?.username || "My studio",
+      });
+      const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+
+      try {
+        await analyticsApi.track({
+          action: "lead_followup_sent",
+          source: "availability_leads",
+          channel: "whatsapp",
+          templateId: selectedFollowUpTemplate.id,
+          leadId: lead.id,
+        });
+      } catch {
+        // Non-blocking tracking
+      }
+
+      window.open(url, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    const email = String(lead.clientEmail || "").trim();
+    if (!email) {
+      info("Lead has no email address.");
+      return;
+    }
+
+    const subject = fillFollowUpTemplate(selectedFollowUpTemplate.emailSubject, lead, {
+      studioName: user?.fullName || user?.username || "My studio",
+    });
+    const body = fillFollowUpTemplate(selectedFollowUpTemplate.emailBody, lead, {
+      studioName: user?.fullName || user?.username || "My studio",
+    });
+
+    try {
+      await analyticsApi.track({
+        action: "lead_followup_sent",
+        source: "availability_leads",
+        channel: "email",
+        templateId: selectedFollowUpTemplate.id,
+        leadId: lead.id,
+      });
+    } catch {
+      // Non-blocking tracking
+    }
+
+    window.location.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  };
+
+  const { selectedLeadTrend, leadTrendMax } = useLeadTrendData(bookingLeadInsights, leadTrendWindow);
+  const pendingReminderSummary = usePendingReminderSummary(bookingLeads);
+
   const leadsRangeStart = bookingLeads.length
     ? (bookingLeadsPagination.page - 1) * bookingLeadsPagination.limit + 1
     : 0;
@@ -466,315 +537,165 @@ export default function Availability() {
 
   return (
     <DashboardLayout>
-      <div className="bg-gradient-to-br from-white to-slate-50 rounded-xl border border-slate-200 shadow-sm p-5 sm:p-6 mb-6">
-        <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-5">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap mb-3">
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-cyan-50 text-cyan-700 border border-cyan-100">
-                Availability Control
-              </span>
-              <span
-                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
-                  changedCount > 0
-                    ? "bg-amber-50 text-amber-700 border-amber-200"
-                    : "bg-green-50 text-green-700 border-green-200"
-                }`}
-              >
-                {changedCount > 0 ? `${changedCount} unsaved change${changedCount > 1 ? "s" : ""}` : "All changes saved"}
-              </span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-1">Availability Calendar</h1>
-            <p className="text-slate-600">
-              Click future dates to toggle between AVAILABLE and BOOKED. Real bookings stay locked.
-            </p>
-
-            <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-2">
-              {availabilityLegend.map((item) => (
-                <div key={item.key} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-3.5 h-3.5 rounded border ${item.swatchClass}`} />
-                    <span className={`text-xs font-medium ${item.textClass}`}>{item.label}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="w-full xl:w-auto">
-            <Button
-              onClick={() => void handleSave()}
-              disabled={saving || changedCount === 0}
-              className="w-full xl:w-auto"
-            >
-              <Save className="w-4 h-4" />
-              {saving ? "Saving..." : `Save Changes${changedCount ? ` (${changedCount})` : ""}`}
-            </Button>
-          </div>
+      <div className="mb-4 rounded-2xl border border-slate-200/80 bg-white px-3.5 py-3.5 sm:mb-6 sm:rounded-xl sm:border-slate-200 sm:bg-linear-to-br sm:from-white sm:to-slate-50 sm:p-6 sm:shadow-sm">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-cyan-700">Schedule Management</p>
+          <h1 className="mt-2 text-lg font-semibold text-slate-900 sm:text-3xl sm:font-bold">Calendar</h1>
+          <p className="mt-1 text-sm text-slate-600">Set available and booked dates so clients can plan with confidence.</p>
         </div>
       </div>
+
+      <AvailabilitySummaryCard
+        changedCount={changedCount}
+        saving={saving}
+        onSave={() => void handleSave()}
+        availabilityLegend={AVAILABILITY_LEGEND}
+      />
 
       {loading ? (
         <LoadingCard label="Loading calendar..." />
       ) : (
-        <div className="space-y-6">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-5 max-h-[500px] overflow-hidden">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg sm:text-xl font-bold text-slate-900">
-                {months[month]} {year}
-              </h2>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setCurrentDate((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <ChevronLeft className="w-5 h-5 text-slate-600" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCurrentDate((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <ChevronRight className="w-5 h-5 text-slate-600" />
-                </button>
+        <div className="space-y-5 sm:space-y-6">
+          <AvailabilityCalendarCard
+            month={month}
+            year={year}
+            monthKey={monthKey}
+            calendarCells={calendarCells}
+            getDayStatus={getDayStatus}
+            getDayKey={getDayKey}
+            isPastDay={isPastDay}
+            onToggleDay={handleToggleDay}
+            onPreviousMonth={() =>
+              setCurrentDate((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))
+            }
+            onNextMonth={() =>
+              setCurrentDate((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))
+            }
+          />
+
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-3.5 sm:rounded-xl sm:border-gray-200 sm:p-6">
+            <BookingLeadsFilterHeader
+              filters={bookingLeadFilters}
+              canUseLeadFilters={canUseLeadFilters}
+              leadFiltersUpgradeTarget={leadFiltersUpgradeTarget}
+              showLeadFiltersUpgrade={showLeadFiltersUpgrade}
+              bookingLeadWindow={bookingLeadWindow}
+              totalLeads={bookingLeadsPagination.total}
+              exportingLeads={exportingLeads}
+              followUpTemplates={followUpTemplates}
+              selectedFollowUpTemplateId={selectedFollowUpTemplateId}
+              leadUpgradeNudges={leadUpgradeNudges}
+              onStatusChange={(value) => handleLeadFilterChange("status", value)}
+              onSourceChange={(value) => handleLeadFilterChange("source", value)}
+              onSearchChange={(value) => handleLeadFilterChange("search", value)}
+              onPeriodPresetChange={handleLeadPeriodPresetChange}
+              onExportLeads={() => {
+                void handleExportLeads();
+              }}
+              onSelectFollowUpTemplateId={setSelectedFollowUpTemplateId}
+              onUpgradeFromLeads={(context) => {
+                void handleUpgradeFromLeads(context);
+              }}
+            />
+
+            <div className="mb-4 overflow-hidden rounded-xl border border-slate-200 bg-slate-50/80 sm:grid sm:grid-cols-3 sm:gap-3 sm:rounded-none sm:border-none sm:bg-transparent">
+              <div className="flex items-center justify-between px-3 py-2.5 sm:rounded-lg sm:border sm:border-slate-200 sm:bg-slate-50">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Pending Leads</p>
+                <p className="text-base font-semibold text-slate-900 sm:text-lg">{pendingReminderSummary.pending}</p>
+              </div>
+              <div className="flex items-center justify-between border-t border-slate-200 px-3 py-2.5 sm:rounded-lg sm:border sm:border-amber-200 sm:bg-amber-50 sm:justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">Need Follow-up 24h+</p>
+                <p className="text-base font-semibold text-amber-800 sm:text-lg">{pendingReminderSummary.stale24h}</p>
+              </div>
+              <div className="flex items-center justify-between border-t border-slate-200 px-3 py-2.5 sm:rounded-lg sm:border sm:border-red-200 sm:bg-red-50 sm:justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-red-700">Urgent 3d+</p>
+                <p className="text-base font-semibold text-red-800 sm:text-lg">{pendingReminderSummary.stale72h}</p>
               </div>
             </div>
-            <div className="grid grid-cols-7 gap-2 mb-2">
-              {daysOfWeek.map((dayLabel) => (
-                <div key={dayLabel} className="text-center text-xs sm:text-sm font-semibold text-slate-600 py-1">
-                  {dayLabel}
+
+            {showLeadExportUpgrade && !canExportLeads ? (
+              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-amber-900">Unlock Lead Export</p>
+                  <p className="text-xs text-amber-800">CSV export is available on {leadFiltersUpgradeTarget} and above for pipeline review and retargeting.</p>
                 </div>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-7 gap-2">
-              {calendarCells.map((day, index) => {
-                if (!day) {
-                  return <div key={`empty-${monthKey}-${index}`} className="h-16" />;
-                }
-
-                const status = getDayStatus(day);
-                const dayKey = getDayKey(day);
-                const isPast = isPastDay(day);
-                const isLockedBooked = isLockedBookedDay(day);
-                const disabled = isPast || isLockedBooked;
-                const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
-                const isBooked = isBookedStatus(status);
-
-                return (
-                  <button
-                    key={`${monthKey}-${day}`}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => handleToggleDay(day)}
-                    title={`${dayKey}: ${statusLabel}${isPast ? " (Past date)" : ""}${isLockedBooked ? " (Locked by booking)" : ""}`}
-                    className={`h-16 w-full rounded-lg border text-sm font-semibold flex items-center justify-center transition-colors ${
-                      isPast
-                        ? "bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed"
-                        : getStatusClasses(status, { isLockedBooked })
-                    }`}
-                  >
-                    <span className="flex flex-col items-center leading-tight">
-                      <span>{day}</span>
-                      {isBooked ? <span className="text-[10px] uppercase tracking-wide">B</span> : null}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900 mb-1">Recent Booking Leads</h2>
-                <p className="text-sm text-slate-600">Latest inquiries, 10 leads per page.</p>
+                <Button type="button" variant="secondary" onClick={() => void handleUpgradeFromLeads("export_upgrade_banner")}>View Plans</Button>
               </div>
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-cyan-50 text-cyan-700 border border-cyan-100">
-                {bookingLeadsPagination.total} total
-              </span>
-            </div>
+            ) : null}
 
-            {bookingLeadsLoading ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map((row) => (
-                  <div key={row} className="h-14 rounded-lg bg-gray-100 animate-pulse" />
-                ))}
-              </div>
-            ) : bookingLeads.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-gray-300 bg-white/80 p-8 text-center">
-                <div className="mx-auto mb-3 w-12 h-12 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center">
-                  <AlertCircle className="w-5 h-5" />
-                </div>
-                <p className="text-sm font-semibold text-slate-900">No booking inquiries yet</p>
-                <p className="text-xs text-slate-600 mt-1">New booking leads will appear here as clients submit requests.</p>
-              </div>
-            ) : (
-              <>
-                <div className="hidden lg:block overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-gray-200">
-                        <th className="text-left py-3 px-4 text-sm font-semibold text-slate-900">Name</th>
-                        <th className="text-left py-3 px-4 text-sm font-semibold text-slate-900">Phone</th>
-                        <th className="text-left py-3 px-4 text-sm font-semibold text-slate-900">Email</th>
-                        <th className="text-left py-3 px-4 text-sm font-semibold text-slate-900">Service</th>
-                        <th className="text-left py-3 px-4 text-sm font-semibold text-slate-900">Package</th>
-                        <th className="text-left py-3 px-4 text-sm font-semibold text-slate-900">Preferred Date</th>
-                        <th className="text-left py-3 px-4 text-sm font-semibold text-slate-900">Submitted</th>
-                        <th className="text-left py-3 px-4 text-sm font-semibold text-slate-900">Status</th>
-                        <th className="text-left py-3 px-4 text-sm font-semibold text-slate-900">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bookingLeads.map((lead) => {
-                        const statusConfig = getLeadStatusConfig(lead.status);
-                        const StatusIcon = statusConfig.icon;
-                        const actions = getLeadStatusActions(lead.status);
-                        const isUpdatingLead = bookingLeadActionId === lead.id;
+            <BookingLeadsList
+              data={{
+                loading: bookingLeadsLoading,
+                leads: bookingLeads,
+                notesDrafts: bookingLeadNotesDrafts,
+              }}
+              uiState={{
+                actionId: bookingLeadActionId,
+                notesSavingId: bookingLeadNotesSavingId,
+              }}
+              capabilities={{
+                canUseWhatsAppFollowUp,
+                canUseEmailFollowUp,
+                hasSelectedFollowUpTemplate: Boolean(selectedFollowUpTemplate),
+              }}
+              pagination={{
+                page: bookingLeadsPage,
+                totalPages: bookingLeadsPagination.totalPages || 1,
+                total: bookingLeadsPagination.total,
+                rangeStart: leadsRangeStart,
+                rangeEnd: leadsRangeEnd,
+              }}
+              handlers={{
+                onNotesDraftChange: (leadId, value) =>
+                  setBookingLeadNotesDrafts((current) => ({
+                    ...current,
+                    [leadId]: value,
+                  })),
+                onSaveLeadNotes: (lead) => {
+                  void handleSaveLeadNotes(lead);
+                },
+                onFollowUpLead: (lead, channel) => {
+                  void handleFollowUpLead(lead, channel);
+                },
+                onLeadStatusUpdate: (lead, nextStatus) => {
+                  void handleLeadStatusUpdate(lead, nextStatus);
+                },
+                onPreviousPage: () => setBookingLeadsPage((current) => Math.max(1, current - 1)),
+                onNextPage: () =>
+                  setBookingLeadsPage((current) =>
+                    Math.min(current + 1, bookingLeadsPagination.totalPages || 1)
+                  ),
+              }}
+            />
 
-                        return (
-                          <tr key={lead.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                            <td className="py-4 px-4">
-                              <p className="text-sm font-medium text-slate-900">{lead.clientName || "Unknown client"}</p>
-                              {lead.message ? (
-                                <p className="text-xs text-slate-500 mt-1 line-clamp-1">{lead.message}</p>
-                              ) : null}
-                            </td>
-                            <td className="py-4 px-4 text-sm text-slate-700">{lead.clientPhone || "N/A"}</td>
-                            <td className="py-4 px-4 text-sm text-slate-700">{lead.clientEmail || "N/A"}</td>
-                            <td className="py-4 px-4 text-sm text-slate-700">{lead.service?.name || "N/A"}</td>
-                            <td className="py-4 px-4 text-sm text-slate-700">{lead.package?.name || "N/A"}</td>
-                            <td className="py-4 px-4 text-sm text-slate-700">{formatDateTime(lead.preferredDate)}</td>
-                            <td className="py-4 px-4 text-sm text-slate-700">{formatDateTime(lead.createdAt)}</td>
-                            <td className="py-4 px-4">
-                              <span
-                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${statusConfig.badgeClass}`}
-                              >
-                                <StatusIcon className={`w-3.5 h-3.5 ${statusConfig.iconClass}`} />
-                                {statusConfig.label}
-                              </span>
-                            </td>
-                            <td className={"py-4 px-4" + (actions.length > 0 ? " align-top" : "")}>
-                              {actions.length > 0 ? (
-                                <div className="flex flex-wrap gap-2">
-                                  {actions.map((action) => (
-                                    <Button
-                                      key={action.nextStatus}
-                                      type="button"
-                                      variant={action.variant}
-                                      className="px-3 py-1.5 text-xs"
-                                      disabled={Boolean(bookingLeadActionId)}
-                                      onClick={() => {
-                                        void handleLeadStatusUpdate(lead, action.nextStatus);
-                                      }}
-                                    >
-                                      {isUpdatingLead ? "Updating..." : action.label}
-                                    </Button>
-                                  ))}
-                                </div>
-                              ) : (
-                                <span className="text-xs text-slate-500">No actions</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="lg:hidden space-y-3">
-                  {bookingLeads.map((lead) => {
-                    const statusConfig = getLeadStatusConfig(lead.status);
-                    const StatusIcon = statusConfig.icon;
-                    const actions = getLeadStatusActions(lead.status);
-                    const isUpdatingLead = bookingLeadActionId === lead.id;
-
-                    return (
-                      <div key={lead.id} className="border border-gray-200 rounded-lg p-4">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-slate-900 truncate">{lead.clientName || "Unknown client"}</p>
-                            <p className="text-xs text-slate-600">{lead.clientPhone || "N/A"}</p>
-                            <p className="text-xs text-slate-600 truncate">{lead.clientEmail || "N/A"}</p>
-                          </div>
-                          <span
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${statusConfig.badgeClass}`}
-                          >
-                            <StatusIcon className={`w-3.5 h-3.5 ${statusConfig.iconClass}`} />
-                            {statusConfig.label}
-                          </span>
-                        </div>
-                        <div className="mt-3 grid grid-cols-1 gap-1 text-xs text-slate-700">
-                          <p>Service: {lead.service?.name || "N/A"}</p>
-                          <p>Package: {lead.package?.name || "N/A"}</p>
-                          <p>Preferred Date: {formatDateTime(lead.preferredDate)}</p>
-                          <p>Submitted: {formatDateTime(lead.createdAt)}</p>
-                          {lead.message ? <p className="text-slate-600">Message: {lead.message}</p> : null}
-                        </div>
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          {actions.length > 0 ? (
-                            actions.map((action) => (
-                              <Button
-                                key={action.nextStatus}
-                                type="button"
-                                variant={action.variant}
-                                className="px-3 py-1.5 text-xs"
-                                disabled={Boolean(bookingLeadActionId)}
-                                onClick={() => {
-                                  void handleLeadStatusUpdate(lead, action.nextStatus);
-                                }}
-                              >
-                                {isUpdatingLead ? "Updating..." : action.label}
-                              </Button>
-                            ))
-                          ) : (
-                            <p className="text-xs text-slate-500">No actions available for this lead.</p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {bookingLeadsPagination.totalPages > 1 ? (
-                  <div className="mt-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-4 border-t border-gray-200">
-                    <p className="text-sm text-slate-600">
-                      Showing {leadsRangeStart}-{leadsRangeEnd} of {bookingLeadsPagination.total} leads
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setBookingLeadsPage((current) => Math.max(1, current - 1))}
-                        disabled={bookingLeadsPage <= 1 || bookingLeadsLoading}
-                        className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      >
-                        <ChevronLeft className="w-4 h-4 text-slate-600" />
-                      </button>
-                      <span className="px-3 py-1.5 rounded-lg text-sm font-medium bg-cyan-500 text-white">
-                        {bookingLeadsPage}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setBookingLeadsPage((current) =>
-                            Math.min(current + 1, bookingLeadsPagination.totalPages || 1)
-                          )
-                        }
-                        disabled={bookingLeadsPage >= (bookingLeadsPagination.totalPages || 1) || bookingLeadsLoading}
-                        className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      >
-                        <ChevronRight className="w-4 h-4 text-slate-600" />
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-              </>
-            )}
+            <LeadInsightsPanels
+              bookingLeadInsights={bookingLeadInsights}
+              leadNudgeUpgradeTarget={leadNudgeUpgradeTarget}
+              leadTrendWindow={leadTrendWindow}
+              selectedLeadTrend={selectedLeadTrend}
+              leadTrendMax={leadTrendMax}
+              onLeadTrendWindowChange={setLeadTrendWindow}
+              onUpgradeFromLeads={(context) => void handleUpgradeFromLeads(context)}
+            />
           </div>
         </div>
       )}
     </DashboardLayout>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

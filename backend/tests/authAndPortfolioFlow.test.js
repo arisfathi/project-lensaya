@@ -10,6 +10,7 @@ const { app } = await import("../src/app.js");
 const { prisma } = await import("../src/config/prisma.js");
 const { authService } = await import("../src/services/authService.js");
 const { planLimitService } = await import("../src/services/planLimitService.js");
+const { uploadService } = await import("../src/services/uploadService.js");
 const { signAccessToken, signRefreshToken } = await import("../src/utils/jwt.js");
 
 const makeToken = (sub, role = "PHOTOGRAPHER") =>
@@ -282,6 +283,14 @@ test("DELETE /users/account cancels active subscriptions during account deletion
         },
       },
       {
+        target: prisma.photographer,
+        method: "findUnique",
+        fn: async ({ where }) => {
+          if (where?.userId !== userId) return null;
+          return { id: "account-delete-photographer-1" };
+        },
+      },
+      {
         target: prisma,
         method: "$transaction",
         fn: async (callback) =>
@@ -321,3 +330,52 @@ test("DELETE /users/account cancels active subscriptions during account deletion
     }
   );
 });
+
+
+
+test("POST /uploads/presign creates a presigned upload for onboarding", async () => {
+  const userId = "upload-presign-user";
+  const photographerId = "upload-presign-photographer";
+
+  await withMethodPatches(
+    [
+      {
+        target: prisma.photographer,
+        method: "findUnique",
+        fn: async ({ where }) => {
+          if (where?.userId === userId) {
+            return { id: photographerId };
+          }
+          return null;
+        },
+      },
+      {
+        target: uploadService,
+        method: "createPresignedUpload",
+        fn: async () => ({
+          assetId: "22222222-2222-4222-8222-222222222222",
+          uploadUrl: "https://uploads.example.test/presigned",
+          publicUrl: "https://cdn.example.test/uploads/22222222-2222-4222-8222-222222222222.jpg",
+          headers: { "Content-Type": "image/jpeg" },
+        }),
+      },
+    ],
+    async () => {
+      const res = await request(app)
+        .post("/api/v1/uploads/presign")
+        .set("Authorization", `Bearer ${makeToken(userId)}`)
+        .send({
+          fileName: "cover.jpg",
+          mimeType: "image/jpeg",
+          size: 12345,
+          purpose: "portfolio",
+        });
+
+      assert.equal(res.status, 201);
+      assert.equal(res.body.success, true);
+      assert.equal(res.body.data.assetId, "22222222-2222-4222-8222-222222222222");
+      assert.equal(res.body.data.uploadUrl, "https://uploads.example.test/presigned");
+    }
+  );
+});
+

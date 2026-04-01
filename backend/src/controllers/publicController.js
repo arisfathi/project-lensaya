@@ -1,4 +1,4 @@
-import { publicService } from "../services/publicService.js";
+﻿import { publicService } from "../services/publicService.js";
 import { bookingService } from "../services/bookingService.js";
 import { publicHostService } from "../services/publicHostService.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -7,6 +7,16 @@ import { logger } from "../config/logger.js";
 import { env } from "../config/env.js";
 
 export const publicController = {
+  pricingContent: asyncHandler(async (_req, res) => {
+    const data = await publicService.pricingContent();
+    return sendSuccess(res, data);
+  }),
+
+  content: asyncHandler(async (req, res) => {
+    const data = await publicService.content(req.query);
+    return sendSuccess(res, data);
+  }),
+
   featured: asyncHandler(async (req, res) => {
     const data = await publicService.featured(req.query);
     return sendSuccess(res, data);
@@ -33,7 +43,7 @@ export const publicController = {
   }),
 
   services: asyncHandler(async (req, res) => {
-    const data = await publicService.services(req.params.username);
+    const data = await publicService.services(req.params.username, req.query);
     return sendSuccess(res, data);
   }),
 
@@ -91,5 +101,4 @@ export const publicController = {
     return sendSuccess(res, { accepted: true }, 202);
   }),
 };
-
 

@@ -8,17 +8,22 @@ import { ApiError } from "../utils/apiError.js";
 import { generateUsername } from "../utils/generateUsername.js";
 import { signAccessToken, signRefreshToken, verifyToken } from "../utils/jwt.js";
 import { emailService } from "./emailService.js";
-import { enqueueWelcomeEmail } from "../jobs/emailQueue.js";
+import { enqueueWelcomeEmail, enqueueVerificationEmail } from "../jobs/emailQueue.js";
 import { randomCode, sha256 } from "../utils/crypto.js";
 import { referralService } from "./referralService.js";
+import { planLimitService } from "./planLimitService.js";
 
 const googleClient = env.googleClientId ? new OAuth2Client(env.googleClientId) : null;
 const REFERRAL_PREFIX = "REF-";
 const CONVERSION_STATUSES = new Set(["CONVERTED", "REWARDED"]);
+const EMAIL_VERIFICATION_TOKEN_TTL_MS = 1000 * 60 * 60 * 24;
+const REFERRAL_TRIAL_PLAN = "PRO";
+const REFERRAL_TRIAL_DAYS = 14;
 
 const isLoginBlockedStatus = (status) => status === "SUSPENDED" || status === "DELETED";
 
 const resolveUsername = (user) => user?.photographer?.username || user?.username || null;
+const normalizeEmail = (value = "") => String(value || "").trim().toLowerCase();
 
 const makeTokenPayload = (user) => ({
   sub: user.id,
@@ -31,6 +36,7 @@ const authResponse = (user) => ({
   user: {
     id: user.id,
     email: user.email,
+    emailVerifiedAt: user.emailVerifiedAt ? user.emailVerifiedAt.toISOString() : null,
     fullName: user.fullName,
     username: resolveUsername(user),
     role: user.role,
@@ -109,7 +115,7 @@ const resolveReferrerByCodeTx = async (tx, referralCode) => {
     where: {
       OR: [{ username: token }, { photographer: { is: { username: token } } }],
     },
-    select: { id: true },
+    select: { id: true, email: true },
   });
 
   if (!referrer && token.length >= 6) {
@@ -126,6 +132,7 @@ const resolveReferrerByCodeTx = async (tx, referralCode) => {
   return {
     referrerUserId: referrer.id,
     normalizedCode,
+    email: referrer.email,
   };
 };
 
@@ -140,7 +147,11 @@ const markReferralSignedUpTx = async ({
   }
 
   const resolved = await resolveReferrerByCodeTx(tx, referralCode);
-  if (!resolved || resolved.referrerUserId === referredUserId) {
+  if (
+    !resolved ||
+    resolved.referrerUserId === referredUserId ||
+    normalizeEmail(resolved.email) === normalizeEmail(referredEmail)
+  ) {
     return { updated: false };
   }
 
@@ -239,6 +250,136 @@ const markReferralSignedUpTx = async ({
   return { updated: true, referralId: created.id };
 };
 
+const grantReferralVerificationTrialTx = async (tx, userId) => {
+  if (!userId || !tx?.referral?.findUnique || !tx?.subscription) {
+    return { updated: false };
+  }
+
+  const referral = await tx.referral.findUnique({
+    where: { referredUserId: userId },
+    select: {
+      id: true,
+      referrerUserId: true,
+      status: true,
+      trialGrantedAt: true,
+    },
+  });
+
+  if (
+    !referral ||
+    referral.trialGrantedAt ||
+    referral.referrerUserId === userId ||
+    !["CLICKED", "SIGNED_UP"].includes(referral.status)
+  ) {
+    return { updated: false };
+  }
+
+  const user = await tx.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      photographer: {
+        select: { id: true },
+      },
+    },
+  });
+
+  if (!user) {
+    return { updated: false };
+  }
+
+  const now = new Date();
+  const trialEndsAt = new Date(now.getTime() + REFERRAL_TRIAL_DAYS * 24 * 60 * 60 * 1000);
+
+  const existingSubscription = await tx.subscription.findFirst({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      plan: true,
+      photographerId: true,
+      startedAt: true,
+      status: true,
+      trialEndsAt: true,
+    },
+  });
+
+  if (existingSubscription && existingSubscription.plan !== "FREE") {
+    return { updated: false };
+  }
+
+  const subscriptionData = {
+    photographerId: existingSubscription?.photographerId || user.photographer?.id || null,
+    plan: REFERRAL_TRIAL_PLAN,
+    status: "TRIALING",
+    provider: "MANUAL",
+    billingInterval: "MONTHLY",
+    currentPeriodStart: now,
+    currentPeriodEnd: trialEndsAt,
+    pendingPlan: null,
+    pendingBillingInterval: null,
+    cancelAtPeriodEnd: false,
+    canceledAt: null,
+    trialEndsAt,
+    startedAt: existingSubscription?.startedAt || now,
+  };
+
+  if (existingSubscription) {
+    await tx.subscription.update({
+      where: { id: existingSubscription.id },
+      data: subscriptionData,
+    });
+  } else {
+    await tx.subscription.create({
+      data: {
+        userId,
+        ...subscriptionData,
+      },
+    });
+  }
+
+  await tx.referral.update({
+    where: { id: referral.id },
+    data: { trialGrantedAt: now },
+  });
+
+  logger.info(
+    {
+      userId,
+      referralId: referral.id,
+      trialEndsAt: trialEndsAt.toISOString(),
+    },
+    "Referral trial granted"
+  );
+
+  return { updated: true, trialEndsAt };
+};
+
+const issueEmailVerificationTokenTx = async (tx, userId) => {
+  const token = randomCode("ver_");
+  const tokenHash = sha256(token);
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + EMAIL_VERIFICATION_TOKEN_TTL_MS);
+
+  await tx.emailVerificationToken.updateMany({
+    where: {
+      userId,
+      usedAt: null,
+    },
+    data: { usedAt: now },
+  });
+
+  await tx.emailVerificationToken.create({
+    data: {
+      userId,
+      tokenHash,
+      expiresAt,
+    },
+  });
+
+  return token;
+};
+
 const handleGoogleLogin = async ({ googleProfile, referralCode } = {}) => {
   const { email, name, picture } = googleProfile || {};
   const googleSub = googleProfile?.sub || null;
@@ -251,11 +392,13 @@ const handleGoogleLogin = async ({ googleProfile, referralCode } = {}) => {
 
   const now = new Date();
 
-  const { user } = await prisma.$transaction(async (tx) => {
+  const { user, isNewAccount } = await prisma.$transaction(async (tx) => {
     let user = await tx.user.findUnique({
       where: { email },
       include: { photographer: true },
     });
+    let created = false;
+    const wasUnverified = Boolean(user && !user.emailVerifiedAt);
 
     if (!user) {
       user = await tx.user.create({
@@ -263,13 +406,14 @@ const handleGoogleLogin = async ({ googleProfile, referralCode } = {}) => {
           email,
           fullName: (name || email).slice(0, 191),
           googleId: googleSub,
-          emailVerifiedAt: isEmailVerified ? now : null,
+          emailVerifiedAt: now,
           role: "PHOTOGRAPHER",
           status: "ACTIVE",
           lastLoginAt: now,
         },
         include: { photographer: true },
       });
+      created = true;
 
       const photographer = await ensurePhotographerProfile(user, tx);
       await initializeDefaultSubscription({
@@ -297,14 +441,26 @@ const handleGoogleLogin = async ({ googleProfile, referralCode } = {}) => {
       data: {
         lastLoginAt: now,
         ...(googleSub && user.googleId !== googleSub ? { googleId: googleSub } : {}),
-        ...(isEmailVerified && !user.emailVerifiedAt ? { emailVerifiedAt: now } : {}),
+        ...(wasUnverified ? { emailVerifiedAt: now } : {}),
         ...(normalizedName && !user.fullName ? { fullName: normalizedName } : {}),
       },
       include: { photographer: true },
     });
 
-    return { user };
+    if (created || wasUnverified) {
+      await grantReferralVerificationTrialTx(tx, user.id);
+    }
+
+    return { user, isNewAccount: created };
   });
+
+  if (isNewAccount) {
+    dispatchWelcomeEmailAsync({
+      email: user.email,
+      fullName: user.fullName,
+      requestId: null,
+    });
+  }
 
   return authResponse(user);
 };
@@ -340,6 +496,38 @@ const dispatchWelcomeEmailAsync = ({ email, fullName, requestId = null }) => {
   });
 };
 
+const dispatchVerificationEmailAsync = ({ email, fullName, token, requestId = null }) => {
+  if (!email || !token) return;
+
+  void (async () => {
+    const job = await enqueueVerificationEmail({
+      email,
+      fullName,
+      token,
+      requestId,
+    });
+
+    if (job) return;
+
+    await emailService.sendVerificationEmail(email, fullName || "there", token);
+  })().catch((error) => {
+    logger.error(
+      {
+        err: error,
+        email,
+        requestId,
+      },
+      "Failed to deliver verification email asynchronously"
+    );
+    captureException(error, {
+      service: "authService",
+      action: "dispatchVerificationEmailAsync",
+      email,
+      requestId,
+    });
+  });
+};
+
 export const authService = {
   async signup({ fullName, email, password, referralCode }, options = {}) {
     const requestId = options?.requestId || null;
@@ -347,6 +535,7 @@ export const authService = {
     if (existing) throw new ApiError(409, "Email already in use");
 
     const passwordHash = await bcrypt.hash(password, 10);
+    const now = new Date();
     const { user } = await prisma.$transaction(async (tx) => {
       const createdUser = await tx.user.create({
         data: {
@@ -354,6 +543,7 @@ export const authService = {
           email,
           passwordHash,
           role: "PHOTOGRAPHER",
+          emailVerifiedAt: now,
         },
       });
 
@@ -371,6 +561,7 @@ export const authService = {
         referredEmail: createdUser.email,
       });
 
+      await grantReferralVerificationTrialTx(tx, createdUser.id);
       const fullUser = await tx.user.findUnique({
         where: { id: createdUser.id },
         include: { photographer: true },
@@ -395,16 +586,26 @@ export const authService = {
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user?.passwordHash) throw new ApiError(401, "Invalid credentials");
     if (isLoginBlockedStatus(user.status)) throw new ApiError(403, "Account is not allowed to log in");
+    const wasUnverified = !user.emailVerifiedAt;
 
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) throw new ApiError(401, "Invalid credentials");
 
+    const verifiedAt = wasUnverified ? new Date() : null;
     await prisma.user.update({
       where: { id: user.id },
-      data: { lastLoginAt: new Date() },
+      data: {
+        lastLoginAt: new Date(),
+        ...(verifiedAt ? { emailVerifiedAt: verifiedAt } : {}),
+      },
     });
 
     await ensurePhotographerProfile(user);
+
+    if (verifiedAt) {
+      user.emailVerifiedAt = verifiedAt;
+      await prisma.$transaction(async (tx) => grantReferralVerificationTrialTx(tx, user.id));
+    }
 
     return authResponse(user);
   },
@@ -466,6 +667,19 @@ export const authService = {
     return { message: "Reset instructions sent" };
   },
 
+  async verifyEmail({ token }, options = {}) {
+    void token;
+    void options;
+    return { message: "Email verification is no longer required." };
+  },
+
+  async resendVerification({ email, userId }, options = {}) {
+    void email;
+    void userId;
+    void options;
+    return { message: "Email verification is no longer required." };
+  },
+
   async resetPassword({ token, newPassword }) {
     const tokenHash = sha256(token || "");
     const record = await prisma.passwordResetToken.findFirst({
@@ -516,20 +730,26 @@ export const authService = {
     if (!user) throw new ApiError(404, "User not found");
     if (isLoginBlockedStatus(user.status)) throw new ApiError(403, "Account is not allowed to log in");
 
-    const latestSubscription = await prisma.subscription.findFirst({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
-      select: { plan: true },
-    });
+    const plan = await planLimitService.getPlanByUserId(user.id);
+    const leadFeatures = planLimitService.getLeadFeatureAccess(plan);
+    const planLimits = planLimitService.mapPlanLimits(plan);
 
     return {
       id: user.id,
       role: user.role,
       fullName: user.fullName,
       email: user.email,
+      emailVerifiedAt: user.emailVerifiedAt ? user.emailVerifiedAt.toISOString() : null,
       username: user.photographer?.username || user.username,
-      plan: latestSubscription?.plan || (user.photographer ? "FREE" : null),
+      plan: plan?.name || (user.photographer ? "FREE" : null),
       status: user.status,
+      leadFeatures,
+      planFeatures: {
+        teamSectionTools: Boolean(planLimits.teamSectionTools),
+      },
     };
   },
 };
+
+
+

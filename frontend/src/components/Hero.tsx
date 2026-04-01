@@ -27,7 +27,7 @@ export function Hero() {
               <ArrowRight className="h-5 w-5" />
             </Link>
             <Link
-              to="/portfolio"
+              to="/p/lensaya"
               className="group flex items-center gap-2 rounded-lg border-2 border-slate-200 px-8 py-4 text-lg font-semibold text-slate-700 transition-all hover:border-cyan-500 hover:text-cyan-600"
             >
               <ExternalLink className="h-5 w-5 transition-transform group-hover:scale-110" />
@@ -48,12 +48,12 @@ export function Hero() {
 
             <div className="absolute left-6 top-6 rounded-xl border border-gray-100 bg-white/95 px-4 py-3 shadow-xl backdrop-blur-sm">
               <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">Live Portfolio</p>
-              <p className="font-bold text-slate-900">Sarah Johnson Photography</p>
+              <p className="font-bold text-slate-900">Lensaya Studio</p>
             </div>
 
             <div className="absolute bottom-6 right-6 rounded-xl border border-gray-100 bg-white/95 px-5 py-3 shadow-xl backdrop-blur-sm">
               <p className="mb-1 text-xs text-slate-500">Your custom URL:</p>
-              <p className="text-lg font-semibold text-cyan-500">{buildPublicStudioHost('yourname')}</p>
+              <p className="text-lg font-semibold text-cyan-500">{buildPublicStudioHost('lensaya')}</p>
             </div>
           </div>
 
@@ -85,4 +85,7 @@ export function Hero() {
     </section>
   );
 }
+
+
+
 

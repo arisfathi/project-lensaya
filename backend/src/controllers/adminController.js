@@ -1,4 +1,4 @@
-import { adminService } from "../services/adminService.js";
+﻿import { adminService } from "../services/adminService.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { sendSuccess } from "../utils/response.js";
 
@@ -15,10 +15,12 @@ export const adminController = {
   planLimitsGet: asyncHandler(async (_req, res) => sendSuccess(res, await adminService.getPlanLimits())),
   planLimitsPatch: asyncHandler(async (req, res) => sendSuccess(res, await adminService.updatePlanLimits(req.body))),
   subscriptionChanges: asyncHandler(async (req, res) => sendSuccess(res, await adminService.subscriptionChanges(req.query))),
+  publicPricingContentGet: asyncHandler(async (_req, res) => sendSuccess(res, await adminService.getPublicPricingContent())),
+  publicPricingContentPatch: asyncHandler(async (req, res) => sendSuccess(res, await adminService.updatePublicPricingContent(req.body))),
 
   revenueOverview: asyncHandler(async (_req, res) => sendSuccess(res, await adminService.revenueOverview())),
   revenueMonthly: asyncHandler(async (req, res) => sendSuccess(res, await adminService.monthlyRevenue(req.query))),
-  revenueByPlan: asyncHandler(async (req, res) => sendSuccess(res, await adminService.revenueByPlan(req.query))),
+  revenueByPlan: asyncHandler(async (_req, res) => sendSuccess(res, await adminService.revenueByPlan())),
   revenueTransactions: asyncHandler(async (req, res) => sendSuccess(res, await adminService.revenueTransactions(req.query))),
 
   storageOverview: asyncHandler(async (_req, res) => sendSuccess(res, await adminService.storageOverview())),
@@ -45,7 +47,10 @@ export const adminController = {
   settingsEmailPatch: asyncHandler(async (req, res) => sendSuccess(res, await adminService.updateEmailNotifications(req.body))),
   settingsPlanPatch: asyncHandler(async (req, res) => sendSuccess(res, await adminService.updateSettingsPlanLimits(req.body))),
 
-  legalPages: asyncHandler(async (_req, res) => sendSuccess(res, await adminService.legalPages())),
-  legalPage: asyncHandler(async (req, res) => sendSuccess(res, await adminService.legalPage(req.params.slug))),
-  legalPagePatch: asyncHandler(async (req, res) => sendSuccess(res, await adminService.updateLegalPage(req.params.slug, req.body))),
+  contentList: asyncHandler(async (req, res) => sendSuccess(res, await adminService.contentList(req.query))),
+  contentGet: asyncHandler(async (req, res) => sendSuccess(res, await adminService.contentGet(req.params.contentId))),
+  contentCreate: asyncHandler(async (req, res) => sendSuccess(res, await adminService.contentCreate(req.body), 201)),
+  contentPatch: asyncHandler(async (req, res) => sendSuccess(res, await adminService.contentPatch(req.params.contentId, req.body))),
+  contentDelete: asyncHandler(async (req, res) => sendSuccess(res, await adminService.contentDelete(req.params.contentId))),
 };
+

@@ -1,105 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
-import { Copy, Gift, MessageCircle, TrendingUp, UserCheck, Users } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { DashboardLayout } from "../../layouts/DashboardLayout";
-import { Button } from "../../components/ui/Button";
+import { Gift, TrendingUp, UserCheck, Users } from "lucide-react";
+import { DashboardLayout } from "../../components/dashboard/DashboardLayout";
 import { LoadingCard } from "../../components/ui/LoadingSpinner";
-import { getApiErrorMessage, referralApi } from "../../lib/api";
+import { getApiErrorMessage, isApiAccessError, referralApi } from "../../lib/api";
 import { buildAppUrl } from "../../lib/platform";
+import { buildReferralShareMessage } from "../../lib/share";
 import { useToast } from "../../contexts/ToastContext";
-
-type ReferralSummary = {
-  referralCode: string | null;
-  totalReferrals: number;
-  clicks: number;
-  signups: number;
-  conversions: number;
-  conversionRate: number;
-  rewardsEarned: number;
-  activeReferrals: number;
-};
-
-type ReferralEvent = {
-  visitorEmail: string | null;
-  status: string;
-  reward: number;
-  date: string;
-};
-
-type GrowthPoint = {
-  month: string;
-  referrals: number;
-};
-
-const fallbackSummary: ReferralSummary = {
-  referralCode: null,
-  totalReferrals: 0,
-  clicks: 0,
-  signups: 0,
-  conversions: 0,
-  conversionRate: 0,
-  rewardsEarned: 0,
-  activeReferrals: 0,
-};
-
-const REFERRAL_EVENTS_PAGE = 1;
-const REFERRAL_EVENTS_LIMIT = 20;
-
-const statusClassMap: Record<string, string> = {
-  CLICKED: "bg-blue-100 text-blue-700",
-  SIGNED_UP: "bg-cyan-100 text-cyan-700",
-  CONVERTED: "bg-green-100 text-green-700",
-  REWARDED: "bg-emerald-100 text-emerald-700",
-};
-
-const formatNumber = (value: number) => Number(value || 0).toLocaleString();
-
-const formatCurrency = (value: number) =>
-  new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value || 0);
-
-const formatStatus = (status: string) => {
-  if (!status) return "Unknown";
-  return status
-    .toLowerCase()
-    .split("_")
-    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
-    .join(" ");
-};
-
-const formatDateTime = (iso: string) => {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-};
-
-const copyWithExecCommand = (value: string) => {
-  const textarea = document.createElement("textarea");
-  textarea.value = value;
-  textarea.setAttribute("readonly", "");
-  textarea.style.position = "absolute";
-  textarea.style.left = "-9999px";
-  document.body.appendChild(textarea);
-  textarea.select();
-  const copied = document.execCommand("copy");
-  document.body.removeChild(textarea);
-
-  if (!copied) {
-    throw new Error("Failed to copy");
-  }
-};
+import {
+  FALLBACK_SUMMARY,
+  REFERRAL_EVENTS_LIMIT,
+  REFERRAL_EVENTS_PAGE,
+} from "./referrals/constants";
+import { ReferralGrowthChart } from "./referrals/components/ReferralGrowthChart";
+import { ReferralHistorySection } from "./referrals/components/ReferralHistorySection";
+import { ReferralInvitePanel } from "./referrals/components/ReferralInvitePanel";
+import { ReferralOfferBanner } from "./referrals/components/ReferralOfferBanner";
+import { ReferralsPageHeader } from "./referrals/components/ReferralsPageHeader";
+import { ReferralStatsGrid } from "./referrals/components/ReferralStatsGrid";
+import type { GrowthPoint, ReferralEvent, ReferralStatCard, ReferralSummary } from "./referrals/types";
+import { copyWithExecCommand, formatCurrency, formatNumber } from "./referrals/utils";
 
 export default function Referrals() {
   const [loading, setLoading] = useState(true);
-  const [summary, setSummary] = useState<ReferralSummary>(fallbackSummary);
+  const [summary, setSummary] = useState<ReferralSummary>(FALLBACK_SUMMARY);
   const [events, setEvents] = useState<ReferralEvent[]>([]);
 
   const { error, success } = useToast();
@@ -116,10 +39,10 @@ export default function Referrals() {
         ]);
 
         if (!mounted) return;
-        setSummary((summaryResult || fallbackSummary) as ReferralSummary);
+        setSummary((summaryResult || FALLBACK_SUMMARY) as ReferralSummary);
         setEvents((eventsResult.items || []) as ReferralEvent[]);
       } catch (err) {
-        if (!mounted) return;
+        if (!mounted || isApiAccessError(err)) return;
         error(getApiErrorMessage(err, "Failed to load referrals"));
       } finally {
         if (mounted) {
@@ -179,7 +102,7 @@ export default function Referrals() {
     return buckets.map(({ month, referrals }) => ({ month, referrals }));
   }, [events]);
 
-  const stats = [
+  const stats: ReferralStatCard[] = [
     {
       name: "Clicks",
       value: formatNumber(clicksCount),
@@ -210,22 +133,30 @@ export default function Referrals() {
     },
   ];
 
-  const handleCopyLink = async () => {
-    if (!referralLink) {
+  const copyReferralValue = async (value: string, successMessage: string, failureMessage: string) => {
+    if (!value) {
       error("Referral code is not available yet");
       return;
     }
 
     try {
       if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(referralLink);
+        await navigator.clipboard.writeText(value);
       } else {
-        copyWithExecCommand(referralLink);
+        copyWithExecCommand(value);
       }
-      success("Referral link copied.");
+      success(successMessage);
     } catch {
-      error("Unable to copy referral link");
+      error(failureMessage);
     }
+  };
+
+  const handleCopyLink = async () => {
+    await copyReferralValue(referralLink, "Referral link copied.", "Unable to copy referral link");
+  };
+
+  const handleCopyCode = async () => {
+    await copyReferralValue(referralCode, "Referral code copied.", "Unable to copy referral code");
   };
 
   const handleShareWhatsApp = () => {
@@ -234,7 +165,7 @@ export default function Referrals() {
       return;
     }
 
-    const text = encodeURIComponent(`Join Lensaya using my referral link: ${referralLink}`);
+    const text = encodeURIComponent(buildReferralShareMessage(referralLink));
     window.open(`https://wa.me/?text=${text}`, "_blank", "noopener,noreferrer");
   };
 
@@ -248,138 +179,36 @@ export default function Referrals() {
 
   return (
     <DashboardLayout>
-      <div className="mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-2">Referrals</h1>
-        <p className="text-slate-600">Track your referral performance and earned rewards</p>
-      </div>
+      <ReferralsPageHeader />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
-        {stats.map((stat) => {
-          const Icon = stat.icon;
-          return (
-            <div key={stat.name} className="bg-white rounded-xl border border-gray-200 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className={`p-2.5 ${stat.bgColor} rounded-lg`}>
-                  <Icon className={`w-5 h-5 ${stat.iconColor}`} />
-                </div>
-              </div>
-              <p className="text-2xl sm:text-3xl font-bold text-slate-900 mb-1">{stat.value}</p>
-              <p className="text-sm text-slate-600">{stat.name}</p>
-            </div>
-          );
-        })}
-      </div>
+      <ReferralOfferBanner />
 
-      <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
-        <h2 className="text-lg font-semibold text-slate-900 mb-4">Your Referral Code</h2>
+      <ReferralStatsGrid stats={stats} />
 
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
-          <p className="text-sm text-slate-600 mb-1">Code</p>
-          <p className="text-2xl font-bold text-slate-900 tracking-wide">{referralCode || "N/A"}</p>
-        </div>
+      <ReferralInvitePanel
+        data={{
+          referralCode,
+          referralLink,
+        }}
+        actions={{
+          onCopyLink: () => {
+            void handleCopyLink();
+          },
+          onCopyCode: () => {
+            void handleCopyCode();
+          },
+          onShareWhatsApp: handleShareWhatsApp,
+        }}
+      />
 
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
-          <p className="text-sm text-slate-600 mb-1">Referral Link</p>
-          <p className="text-sm font-medium text-cyan-600 break-all">{referralLink || "Referral link unavailable"}</p>
-        </div>
+      <ReferralGrowthChart growthData={growthData} />
 
-        <div className="flex flex-wrap gap-3">
-          <Button
-            variant="secondary"
-            onClick={() => {
-              void handleCopyLink();
-            }}
-          >
-            <Copy className="w-4 h-4" />
-            Copy Link
-          </Button>
-          <Button variant="secondary" onClick={handleShareWhatsApp}>
-            <MessageCircle className="w-4 h-4" />
-            Share WhatsApp
-          </Button>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl border border-gray-200 p-6 mb-8">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold text-slate-900">Referral Growth</h2>
-          <p className="text-sm text-slate-600">Last 6 months</p>
-        </div>
-        <ResponsiveContainer width="100%" height={350}>
-          <LineChart data={growthData}>
-            <XAxis dataKey="month" stroke="#94a3b8" style={{ fontSize: "12px" }} tickLine={false} />
-            <YAxis stroke="#94a3b8" style={{ fontSize: "12px" }} tickLine={false} allowDecimals={false} />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: "#fff",
-                border: "1px solid #e2e8f0",
-                borderRadius: "8px",
-                boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
-              }}
-            />
-            <Line
-              type="monotone"
-              dataKey="referrals"
-              stroke="#06b6d4"
-              strokeWidth={3}
-              dot={{ fill: "#06b6d4", r: 5, strokeWidth: 2, stroke: "#fff" }}
-              activeDot={{ r: 7 }}
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <h2 className="text-lg font-semibold text-slate-900 mb-6">Referral History</h2>
-
-        {hasNoReferrals ? (
-          <div className="text-sm text-slate-600">You haven't referred anyone yet.</div>
-        ) : (
-          <>
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-4 text-sm font-semibold text-slate-900">User</th>
-                    <th className="text-left py-3 px-4 text-sm font-semibold text-slate-900">Status</th>
-                    <th className="text-left py-3 px-4 text-sm font-semibold text-slate-900">Reward</th>
-                    <th className="text-left py-3 px-4 text-sm font-semibold text-slate-900">Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {events.map((item, index) => (
-                    <tr key={`referral-event-${index + 1}`} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                      <td className="py-3 px-4 text-sm text-slate-700">{item.visitorEmail || "Anonymous user"}</td>
-                      <td className="py-3 px-4 text-sm text-slate-700">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                            statusClassMap[item.status] || "bg-slate-100 text-slate-700"
-                          }`}
-                        >
-                          {formatStatus(item.status)}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-sm text-slate-700">{formatCurrency(item.reward || 0)}</td>
-                      <td className="py-3 px-4 text-sm text-slate-700">{formatDateTime(item.date)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="md:hidden space-y-4">
-              {events.map((item, index) => (
-                <div key={`referral-event-mobile-${index + 1}`} className="border border-gray-200 rounded-lg p-4">
-                  <p className="text-sm font-semibold text-slate-900">{item.visitorEmail || "Anonymous user"}</p>
-                  <p className="text-sm text-slate-700 mt-1">{formatStatus(item.status)}</p>
-                  <p className="text-sm text-slate-700 mt-1">Reward: {formatCurrency(item.reward || 0)}</p>
-                  <p className="text-xs text-slate-500 mt-2">{formatDateTime(item.date)}</p>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
+      <ReferralHistorySection
+        data={{
+          events,
+          hasNoReferrals,
+        }}
+      />
     </DashboardLayout>
   );
 }

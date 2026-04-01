@@ -250,6 +250,7 @@ export function CustomDomainCard({ currentPlan, fallbackHost }: CustomDomainCard
     return () => {
       canceled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pre-existing dependency shape; isolated in Phase 1.5
   }, [currentPlan, fallbackUrlFromProps, mode]);
 
   const resolvedState = useMemo(
@@ -522,7 +523,7 @@ export function CustomDomainCard({ currentPlan, fallbackHost }: CustomDomainCard
   };
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div className="rounded-2xl border border-slate-200/80 bg-white/95 p-4 shadow-sm md:p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -533,17 +534,17 @@ export function CustomDomainCard({ currentPlan, fallbackHost }: CustomDomainCard
               {status.label}
             </span>
           </div>
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="mt-1 text-xs text-slate-600 md:text-sm">
             Point your own domain to Lensaya while keeping your Lensaya URL as a fallback.
           </p>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-right">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left sm:text-right">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Plan</p>
           <p className="mt-1 text-sm font-semibold text-slate-900">{resolvedState.currentPlan}</p>
         </div>
       </div>
 
-      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/80 p-3 md:p-4">
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Fallback Lensaya URL</p>
@@ -557,18 +558,18 @@ export function CustomDomainCard({ currentPlan, fallbackHost }: CustomDomainCard
       </div>
 
       {loading ? (
-        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 md:p-5">
           Loading custom domain settings...
         </div>
       ) : !resolvedState.eligible ? (
-        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-5">
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5">
           <div className="flex items-start gap-3">
             <div className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600">
               <Lock className="h-5 w-5" />
             </div>
             <div className="flex-1">
               <p className="text-sm font-semibold text-slate-900">Unlock custom domains on Pro or Studio</p>
-              <p className="mt-1 text-sm text-slate-600">{status.description}</p>
+              <p className="mt-1 text-xs text-slate-600 md:text-sm">{status.description}</p>
               {resolvedState.domain ? (
                 <>
                   <p className="mt-2 text-xs text-slate-500">
@@ -613,7 +614,7 @@ export function CustomDomainCard({ currentPlan, fallbackHost }: CustomDomainCard
                 onChange={(event) => setDomainInput(event.target.value)}
                 placeholder="www.raystudio.com"
                 disabled={actionLoading === "verify" || actionLoading === "disconnect"}
-                className="w-full rounded-lg border border-gray-300 px-4 py-2.5 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:bg-slate-100"
+                className="w-full rounded-lg border border-gray-300 px-3.5 py-2.5 text-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:bg-slate-100"
               />
               <p className="mt-1 text-xs text-slate-500">
                 Use the www version for the smoothest setup, for example www.yourstudio.com.
@@ -637,14 +638,14 @@ export function CustomDomainCard({ currentPlan, fallbackHost }: CustomDomainCard
             </div>
           </div>
 
-          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3.5 md:p-4">
             <div className="flex items-start gap-3">
               <div className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600">
                 <Globe className="h-5 w-5" />
               </div>
               <div>
                 <p className="text-sm font-semibold text-slate-900">{status.description}</p>
-                {noticeMessage ? <p className="mt-1 text-sm text-slate-600">{noticeMessage}</p> : null}
+                {noticeMessage ? <p className="mt-1 text-xs text-slate-600 md:text-sm">{noticeMessage}</p> : null}
               </div>
             </div>
           </div>
@@ -660,7 +661,7 @@ export function CustomDomainCard({ currentPlan, fallbackHost }: CustomDomainCard
 
           {showConnectionDetails ? (
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="rounded-xl border border-slate-200 bg-white p-3.5 md:p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Active Domain</p>
                 <div className="mt-2 flex items-center justify-between gap-3">
                   <p className="break-all text-sm font-semibold text-slate-900">{connectedDomain}</p>
@@ -677,7 +678,7 @@ export function CustomDomainCard({ currentPlan, fallbackHost }: CustomDomainCard
                   ) : null}
                 </div>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="rounded-xl border border-slate-200 bg-white p-3.5 md:p-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">SSL Status</p>
                 <div className="mt-2 flex items-center gap-2 text-sm font-semibold text-slate-900">
                   {resolvedState.sslStatus === "issued" ? (
@@ -701,11 +702,11 @@ export function CustomDomainCard({ currentPlan, fallbackHost }: CustomDomainCard
           ) : null}
 
           {showDnsInstructions && dnsInstructions ? (
-            <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+            <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3.5 md:p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-900">DNS Instructions</p>
-                  <p className="mt-1 text-sm text-slate-600">
+                  <p className="mt-1 text-xs text-slate-600 md:text-sm">
                     Create this record at your DNS provider, then verify it here.
                   </p>
                 </div>
@@ -727,12 +728,12 @@ export function CustomDomainCard({ currentPlan, fallbackHost }: CustomDomainCard
               </div>
 
               <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
-                <div className="grid grid-cols-[100px_minmax(0,1fr)_minmax(0,1fr)] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <div className="grid grid-cols-[84px_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 md:grid-cols-[100px_minmax(0,1fr)_minmax(0,1fr)] md:gap-3 md:px-4 md:py-3 md:text-xs">
                   <span>Type</span>
                   <span>Name / Host</span>
                   <span>Value / Target</span>
                 </div>
-                <div className="grid grid-cols-[100px_minmax(0,1fr)_minmax(0,1fr)] gap-3 px-4 py-4 text-sm text-slate-700">
+                <div className="grid grid-cols-[84px_minmax(0,1fr)_minmax(0,1fr)] gap-2 px-3 py-3 text-sm text-slate-700 md:grid-cols-[100px_minmax(0,1fr)_minmax(0,1fr)] md:gap-3 md:px-4 md:py-4">
                   <span className="font-semibold text-slate-900">{dnsInstructions.type}</span>
                   <div className="min-w-0">
                     <div className="flex items-center justify-between gap-2">
@@ -788,5 +789,19 @@ export function CustomDomainCard({ currentPlan, fallbackHost }: CustomDomainCard
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

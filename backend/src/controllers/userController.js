@@ -1,7 +1,8 @@
 import { DeleteObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import bcrypt from "bcryptjs";
 import formidable from "formidable";
-import { readFile, unlink } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { unlink } from "node:fs/promises";
 import { env } from "../config/env.js";
 import { prisma } from "../config/prisma.js";
 import { getR2Client } from "../config/r2.js";
@@ -237,9 +238,6 @@ export const userController = {
       throw new ApiError(413, "Avatar image must be 5MB or smaller");
     }
 
-    const avatarBuffer = await readFile(avatarFile.filepath);
-    await cleanupTempFile(avatarFile.filepath);
-
     const fileName = toSafeAvatarFileName(avatarFile.originalFilename || "avatar", mimeType);
     const objectKey = `uploads/${photographer.id}/avatar/${Date.now()}-${randomCode()}-${fileName}`;
     const cdnBase = env.r2.publicBaseUrl ? env.r2.publicBaseUrl.replace(/\/+$/, "") : "";
@@ -249,9 +247,9 @@ export const userController = {
       new PutObjectCommand({
         Bucket: env.r2.bucket,
         Key: objectKey,
-        Body: avatarBuffer,
+        Body: createReadStream(avatarFile.filepath),
         ContentType: mimeType,
-        ContentLength: avatarBuffer.byteLength,
+        ContentLength: fileSize,
       })
     );
 
@@ -331,6 +329,11 @@ export const userController = {
       }
 
       throw error;
+    } finally {
+      await cleanupTempFile(avatarFile.filepath);
     }
   }),
 };
+
+
+

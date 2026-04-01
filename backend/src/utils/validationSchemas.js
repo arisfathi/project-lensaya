@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 
 export const emptySchema = z.object({}).passthrough();
 export const emptyQuerySchema = z.object({}).passthrough();
@@ -12,9 +12,9 @@ export const bookingIdParamSchema = z.object({ bookingId: z.string().min(1).max(
 export const assetIdParamSchema = z.object({ assetId: z.string().min(1).max(64) });
 export const planIdParamSchema = z.object({ planId: z.string().uuid() });
 export const checkoutSessionIdParamSchema = z.object({ sessionId: z.string().uuid() });
-export const slugParamSchema = z.object({ slug: z.string().min(2).max(128) });
 export const reportIdParamSchema = z.object({ reportId: z.string().uuid() });
 export const imageReportIdParamSchema = z.object({ imageReportId: z.string().uuid() });
+export const cmsContentIdParamSchema = z.object({ contentId: z.string().uuid() });
 export const notificationReadSchema = z
   .object({
     id: z.string().min(1).max(64).optional(),
@@ -29,7 +29,20 @@ export const notificationReadSchema = z
   );
 
 export const monthQuerySchema = z.object({ month: z.string().min(1).max(32).optional() }).passthrough();
-export const publicGalleryQuerySchema = z.object({ category: z.string().max(64).optional() }).passthrough();
+export const publicGalleryQuerySchema = z
+  .object({
+    category: z.string().max(64).optional(),
+    page: z.coerce.number().int().positive().optional(),
+    limit: z.coerce.number().int().positive().max(500).optional(),
+  })
+  .passthrough();
+
+export const publicServicesQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().positive().max(100).optional(),
+    previewLimit: z.coerce.number().int().positive().max(300).optional(),
+  })
+  .passthrough();
 
 export const uuidParam = z.object({
   serviceId: z.string().uuid().optional(),
@@ -59,6 +72,16 @@ export const basicListQuerySchema = paginationQuerySchema
   })
   .passthrough();
 
+export const analyticsOverviewQuerySchema = z
+  .object({
+    windowDays: z.coerce.number().int().positive().optional(),
+  })
+  .passthrough();
+
+export const analyticsGoalUpdateSchema = z.object({
+  inquiryGoalTarget: z.coerce.number().int().positive().max(100000),
+});
+
 export const signupSchema = z.object({
   fullName: z.string().min(2).max(191),
   email: z.string().email(),
@@ -78,6 +101,12 @@ export const googleSchema = z.object({
 
 export const forgotSchema = z.object({ email: z.string().email() });
 export const resetSchema = z.object({ token: z.string().min(6), newPassword: z.string().min(8).max(128) });
+export const verifyEmailSchema = z.object({ token: z.string().min(6) });
+export const resendVerificationSchema = z
+  .object({
+    email: z.string().email().optional(),
+  })
+  .passthrough();
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1).max(128).optional(),
   newPassword: z.string().min(8).max(128),
@@ -91,6 +120,20 @@ export const refreshSchema = z.object({ refreshToken: z.string().min(10).optiona
 export const bookingStatusSchema = z.object({
   status: z.enum(["PENDING", "CONFIRMED", "DECLINED", "COMPLETED", "CANCELED", "EXPIRED"]),
 });
+
+export const bookingNotesPatchSchema = z.object({
+  notes: z.string().max(5000).nullable().optional(),
+});
+
+export const bookingListQuerySchema = paginationQuerySchema
+  .extend({
+    status: z.enum(["PENDING", "CONFIRMED", "DECLINED", "COMPLETED", "CANCELED", "EXPIRED"]).optional(),
+    source: z.enum(["WEBSITE", "WHATSAPP", "INSTAGRAM", "FACEBOOK", "TIKTOK", "DIRECT", "OTHER"]).optional(),
+    from: z.string().datetime().optional(),
+    to: z.string().datetime().optional(),
+    search: z.string().max(191).optional(),
+  })
+  .passthrough();
 
 export const usernamePreviewQuerySchema = z.object({
   studioName: z.string().max(191),
@@ -115,6 +158,21 @@ export const profilePatchSchema = z.object({
     })
     .optional(),
   themeColor: z.string().max(16).optional(),
+  teamSection: z
+    .object({
+      enabled: z.boolean().optional(),
+      members: z
+        .array(
+          z.object({
+            name: z.string().trim().min(1).max(191),
+            role: z.string().trim().min(1).max(191),
+            image: z.string().trim().url().max(1024),
+          })
+        )
+        .max(12)
+        .optional(),
+    })
+    .optional(),
 });
 
 export const heroPatchSchema = z.object({
@@ -196,7 +254,56 @@ export const analyticsEventSchema = z.object({
   sessionId: z.string().max(128).optional(),
   visitorId: z.string().max(128).optional(),
   source: z.string().max(64).optional(),
+  path: z.string().min(1).max(512).optional(),
+  pageUrl: z.string().max(2048).optional(),
+  referrer: z.string().max(1024).optional(),
   metadata: z.any().optional(),
+}).superRefine((value, ctx) => {
+  if (value.eventType !== "OTHER") return;
+  if (value.metadata === undefined || value.metadata === null) return;
+
+  if (typeof value.metadata !== "object" || Array.isArray(value.metadata)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["metadata"],
+      message: "metadata must be an object when eventType is OTHER",
+    });
+    return;
+  }
+
+  const metadata = value.metadata;
+  const allowedKinds = new Set(["analytics_upgrade_cta", "analytics_insight_action_click"]);
+  const allowedInsightActions = new Set(["improve_portfolio_experience", "refine_service_setup", "optimize_packages"]);
+
+  if (metadata.kind !== undefined) {
+    if (typeof metadata.kind !== "string" || !allowedKinds.has(metadata.kind)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["metadata", "kind"],
+        message: "metadata.kind must be one of: analytics_upgrade_cta, analytics_insight_action_click",
+      });
+      return;
+    }
+  }
+
+  if (metadata.kind === "analytics_insight_action_click") {
+    if (typeof metadata.action !== "string" || !allowedInsightActions.has(metadata.action)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["metadata", "action"],
+        message: "metadata.action must be one of: improve_portfolio_experience, refine_service_setup, optimize_packages",
+      });
+    }
+    return;
+  }
+
+  if (metadata.action !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["metadata", "action"],
+      message: "metadata.action is only allowed when metadata.kind is analytics_insight_action_click",
+    });
+  }
 });
 
 export const portfolioViewSchema = z.object({
@@ -224,6 +331,7 @@ export const avatarUpdateSchema = z.object({ assetId: z.string().uuid() });
 export const changePlanSchema = z.object({
   targetPlanId: z.enum(["FREE", "PRO", "STUDIO"]),
   billingCycle: z.enum(["monthly", "yearly"]).optional(),
+  paymentProvider: z.enum(["chip", "stripe"]).optional(),
   successUrl: z.string().url().optional(),
   cancelUrl: z.string().url().optional(),
   referralCode: z.string().max(64).optional(),
@@ -247,12 +355,21 @@ export const publicBookingCreateSchema = z.object({
   photographerUsername: z.string().min(2).max(64),
   serviceId: z.string().uuid().optional(),
   packageId: z.string().uuid().optional(),
-  preferredDate: z.string().datetime().optional(),
+  preferredDate: z
+    .string()
+    .refine((value) => /^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isNaN(new Date(value).getTime()), {
+      message: "Invalid preferred date",
+    })
+    .optional(),
+  preferredTime: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Invalid preferred time")
+    .optional(),
   name: z.string().min(2).max(191),
   email: z.string().email(),
   phone: z.string().max(32).optional(),
   message: z.string().max(5000).optional(),
-  source: z.enum(["WEBSITE", "WHATSAPP", "INSTAGRAM", "FACEBOOK", "DIRECT", "OTHER"]).optional(),
+  source: z.enum(["WEBSITE", "WHATSAPP", "INSTAGRAM", "FACEBOOK", "TIKTOK", "DIRECT", "OTHER"]),
 });
 
 const webhookIdentifierSchema = z.union([z.string(), z.number()]).optional();
@@ -287,21 +404,32 @@ const webhookCorePayloadSchema = z
     }
   });
 
-export const webhookPayloadSchema = z
-  .union([
-    webhookCorePayloadSchema,
-    z.object({ data: webhookCorePayloadSchema }).passthrough(),
-  ])
-  .transform((value) => {
-    if (value && typeof value === "object" && "data" in value && value.data) {
-      return {
-        ...value.data,
-        _envelope: value,
-      };
-    }
+const stripeWebhookEventSchema = z
+  .object({
+    id: z.string().min(1).max(255),
+    object: z.literal("event").optional(),
+    type: z.string().trim().min(3).max(191),
+    data: z
+      .object({
+        object: z.record(z.string(), z.any()),
+      })
+      .passthrough(),
+  })
+  .passthrough();
 
-    return value;
-  });
+const chipWebhookEnvelopeSchema = z
+  .object({ data: webhookCorePayloadSchema })
+  .passthrough()
+  .transform((value) => ({
+    ...value.data,
+    _envelope: value,
+  }));
+
+export const webhookPayloadSchema = z.union([
+  webhookCorePayloadSchema,
+  chipWebhookEnvelopeSchema,
+  stripeWebhookEventSchema,
+]);
 
 export const clientErrorSchema = z.object({
   type: z.enum(["error", "unhandledrejection"]).optional(),
@@ -338,6 +466,31 @@ export const planLimitsSchema = z.object({
   pro: z.any().optional(),
   studio: z.any().optional(),
 });
+const publicPricingPlanBulletsSchema = z.object({
+  FREE: z.array(z.string().trim().min(1).max(160)).max(12),
+  PRO: z.array(z.string().trim().min(1).max(160)).max(12),
+  STUDIO: z.array(z.string().trim().min(1).max(160)).max(12),
+});
+
+const publicPricingCompareRowSchema = z.object({
+  id: z.string().trim().min(1).max(80).optional(),
+  label: z.string().trim().min(1).max(100),
+  values: z.object({
+    FREE: z.string().trim().min(1).max(120),
+    PRO: z.string().trim().min(1).max(120),
+    STUDIO: z.string().trim().min(1).max(120),
+  }),
+  sortOrder: z.coerce.number().int().min(0).max(10000).optional(),
+});
+
+export const publicPricingContentPatchSchema = z
+  .object({
+    bullets: publicPricingPlanBulletsSchema.optional(),
+    compareRows: z.array(publicPricingCompareRowSchema).max(30).optional(),
+  })
+  .refine((value) => value.bullets !== undefined || value.compareRows !== undefined, {
+    message: "At least one field is required",
+  });
 
 export const subscriptionPlanPutSchema = z
   .object({
@@ -356,17 +509,52 @@ export const subscriptionPlanPutSchema = z
     maxServices: z.number().int().min(-1).max(100000).optional(),
     maxPortfolioImages: z.number().int().min(-1).max(1000000).optional(),
     maxPackages: z.number().int().min(-1).max(100000).optional(),
+    maxPackageFeatures: z.number().int().min(-1).max(100000).optional(),
     storageGB: z.number().int().min(-1).max(100000).optional(),
     customDomain: z.boolean().optional(),
     analyticsTools: z.boolean().optional(),
+    teamSectionTools: z.boolean().optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one field is required",
   });
 
-export const legalPatchSchema = z.object({
-  title: z.string().max(191).optional(),
-  content: z.string().max(200000),
+
+export const cmsContentQuerySchema = z
+  .object({
+    section: z.enum(["RESOURCES", "HELP_CENTER", "BLOG", "GUIDES", "ABOUT", "CONTACT", "LEGAL"]).optional(),
+    status: z.enum(["DRAFT", "PUBLISHED"]).optional(),
+    search: z.string().max(191).optional(),
+    q: z.string().max(191).optional(),
+    page: z.coerce.number().int().positive().optional(),
+    limit: z.coerce.number().int().positive().max(100).optional(),
+  })
+  .passthrough();
+export const cmsContentCreateSchema = z.object({
+  section: z.enum(["RESOURCES", "HELP_CENTER", "BLOG", "GUIDES", "ABOUT", "CONTACT", "LEGAL"]),
+  slug: z.string().trim().min(2).max(191),
+  title: z.string().trim().min(2).max(191),
+  excerpt: z.string().max(500).optional().nullable(),
+  contentMarkdown: z.string().max(200000),
+  status: z.enum(["DRAFT", "PUBLISHED"]).optional(),
+  sortOrder: z.coerce.number().int().min(0).max(100000).optional(),
+  publishedAt: z.string().datetime().optional().nullable(),
 });
+
+export const cmsContentPatchSchema = cmsContentCreateSchema
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field is required",
+  });
+
+export const publicContentQuerySchema = z
+  .object({
+    section: z.enum(["RESOURCES", "HELP_CENTER", "BLOG", "GUIDES", "ABOUT", "CONTACT", "LEGAL"]).optional(),
+    limit: z.coerce.number().int().positive().max(100).optional(),
+  })
+  .passthrough();
+
+
+
 
 

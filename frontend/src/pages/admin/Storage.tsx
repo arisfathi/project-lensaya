@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Cloud, HardDrive, Image, TrendingUp, Users } from "lucide-react";
 import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { AdminLayout } from "../../layouts/AdminLayout";
+import { AdminLayout } from "../../components/admin/AdminLayout";
 import { LoadingCard } from "../../components/ui/LoadingSpinner";
 import { adminApi, getApiErrorMessage } from "../../lib/api";
 import { useToast } from "../../contexts/ToastContext";
@@ -389,3 +389,4 @@ export default function Storage() {
     </AdminLayout>
   );
 }
+

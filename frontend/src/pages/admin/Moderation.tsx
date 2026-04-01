@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Shield, AlertTriangle, Flag, CheckCircle, Ban, Eye } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { AdminLayout } from "../../layouts/AdminLayout";
+import { AdminLayout } from "../../components/admin/AdminLayout";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { Modal } from "../../components/ui/Modal";
 import { LoadingCard, LoadingSpinner } from "../../components/ui/LoadingSpinner";
@@ -417,3 +417,4 @@ export default function Moderation() {
     </AdminLayout>
   );
 }
+

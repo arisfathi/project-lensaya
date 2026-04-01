@@ -1,10 +1,12 @@
 import { logger } from "../config/logger.js";
 import { captureException } from "../config/sentry.js";
+import { env } from "../config/env.js";
 import { createQueue, isQueueAvailable } from "./queueFactory.js";
 import { processAnalyticsEventJob } from "./processors/analyticsProcessor.js";
 
 export const ANALYTICS_QUEUE_NAME = "analyticsQueue";
 export const analyticsQueue = createQueue(ANALYTICS_QUEUE_NAME);
+const canRunInlineFallback = !env.isProduction;
 
 const runInlineAnalyticsProcessing = async (payload, reason) => {
   logger.warn(
@@ -39,6 +41,18 @@ const runInlineAnalyticsProcessing = async (payload, reason) => {
 
 export const enqueueAnalyticsEventProcessing = async (payload) => {
   if (!isQueueAvailable) {
+    if (!canRunInlineFallback) {
+      logger.warn(
+        {
+          queue: ANALYTICS_QUEUE_NAME,
+          requestId: payload?.requestId || null,
+          reason: "redis-disabled",
+          mode: "dropped",
+        },
+        "Skipping inline analytics fallback in production"
+      );
+      return null;
+    }
     return runInlineAnalyticsProcessing(payload, "redis-disabled");
   }
 
@@ -51,6 +65,18 @@ export const enqueueAnalyticsEventProcessing = async (payload) => {
       jobName: "analytics-process",
       requestId: payload?.requestId || null,
     });
+    if (!canRunInlineFallback) {
+      logger.warn(
+        {
+          queue: ANALYTICS_QUEUE_NAME,
+          requestId: payload?.requestId || null,
+          reason: "enqueue-failed",
+          mode: "dropped",
+        },
+        "Skipping inline analytics fallback in production"
+      );
+      return null;
+    }
     return runInlineAnalyticsProcessing(payload, "enqueue-failed");
   }
 };

@@ -1,3 +1,4 @@
+﻿import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 
 interface AvatarProps {
@@ -33,7 +34,16 @@ export function Avatar({
 }: AvatarProps) {
   const normalizedSize = Math.max(16, Number(size) || 40);
   const resolvedName = String(name || "Lensaya User").trim() || "Lensaya User";
-  const resolvedSrc = src || getFallbackAvatarUrl(resolvedName, normalizedSize * 2);
+  const fallbackSrc = useMemo(
+    () => getFallbackAvatarUrl(resolvedName, normalizedSize * 2),
+    [normalizedSize, resolvedName]
+  );
+  const resolvedSrc = src || fallbackSrc;
+  const [imageSrc, setImageSrc] = useState(resolvedSrc);
+
+  useEffect(() => {
+    setImageSrc(resolvedSrc);
+  }, [resolvedSrc]);
 
   const wrapperStyle: CSSProperties = {
     width: `${normalizedSize}px`,
@@ -46,9 +56,14 @@ export function Avatar({
       style={wrapperStyle}
     >
       <img
-        src={resolvedSrc}
+        src={imageSrc}
         alt={resolvedName}
         className={`w-full h-full rounded-full object-cover border border-gray-200 shadow-sm bg-gray-100 ${imageClassName}`}
+        onError={() => {
+          if (imageSrc !== fallbackSrc) {
+            setImageSrc(fallbackSrc);
+          }
+        }}
       />
 
       {status ? (

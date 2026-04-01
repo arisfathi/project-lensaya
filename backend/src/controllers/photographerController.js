@@ -144,6 +144,11 @@ export const photographerController = {
     return sendSuccess(res, data);
   }),
 
+  updateAnalyticsGoal: asyncHandler(async (req, res) => {
+    const data = await photographerService.updateAnalyticsGoal(req.tenant, req.body);
+    return sendSuccess(res, data);
+  }),
+
   analyticsCategories: asyncHandler(async (req, res) => {
     const data = await analyticsService.categoriesByPhotographer(req.tenant);
     return sendSuccess(res, data);
@@ -161,8 +166,10 @@ export const photographerController = {
         userId: req.auth?.sub || null,
         ipAddress: req.ip,
         userAgent: req.headers["user-agent"],
-        referrer: req.headers.referer,
-        path: req.path,
+        referrer: req.headers.referer || req.body?.referrer || null,
+        path: req.body?.path || req.path,
+        pageUrl: req.body?.pageUrl || null,
+        requestHost: req.hostContext?.host || req.headers.host || null,
       },
       req.tenant || null
     );
@@ -202,8 +209,20 @@ export const photographerController = {
     return sendSuccess(res, data);
   }),
 
+  exportBookingLeads: asyncHandler(async (req, res) => {
+    const data = await bookingService.exportForPhotographer(req.tenant, req.query);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename=\"${data.filename}\"`);
+    return res.status(200).send(data.csv);
+  }),
+
   updateBookingStatus: asyncHandler(async (req, res) => {
     const data = await bookingService.updateStatus(req.tenant, req.params.bookingId, req.body.status);
+    return sendSuccess(res, data);
+  }),
+
+  updateBookingNotes: asyncHandler(async (req, res) => {
+    const data = await bookingService.updateNotes(req.tenant, req.params.bookingId, req.body.notes);
     return sendSuccess(res, data);
   }),
 };

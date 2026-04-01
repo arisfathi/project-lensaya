@@ -10,16 +10,17 @@ import {
   Gift,
   BarChart3,
   FileText,
+  PencilLine,
   Settings,
   Search,
   Menu,
   X,
   ChevronDown,
-  Camera,
   LogOut,
 } from "lucide-react";
 import { NotificationBell } from "../notifications/NotificationBell";
 import { useAuth } from "../../contexts/AuthContext";
+import { BrandWordmark } from "../BrandWordmark";
 
 const navigation = [
   { name: "Dashboard", icon: LayoutDashboard, path: "/admin" },
@@ -30,6 +31,7 @@ const navigation = [
   { name: "Abuse / Moderation", icon: Shield, path: "/admin/moderation" },
   { name: "Referrals", icon: Gift, path: "/admin/referrals" },
   { name: "Analytics", icon: BarChart3, path: "/admin/analytics" },
+  { name: "Content CMS", icon: PencilLine, path: "/admin/content" },
   { name: "System Logs", icon: FileText, path: "/admin/logs" },
   { name: "Settings", icon: Settings, path: "/admin/settings" },
 ];
@@ -77,34 +79,29 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-cyan-200/70 via-cyan-100/60 to-sky-200/70">
-      {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-slate-900/45 z-40 lg:hidden"
+          className="fixed inset-0 z-40 bg-slate-900/45 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
-      <aside className={`fixed top-0 left-0 h-full w-64 bg-gradient-to-b from-cyan-950 via-slate-900 to-cyan-950 border-r border-cyan-800/70 shadow-xl z-50 transition-transform lg:translate-x-0 ${
+      <aside className={`fixed top-0 left-0 z-50 h-full w-64 border-r border-cyan-800/70 bg-gradient-to-b from-cyan-950 via-slate-900 to-cyan-950 shadow-xl transition-transform lg:translate-x-0 ${
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
       }`}>
-        {/* Logo */}
-        <div className="h-16 flex items-center justify-between px-6 border-b border-cyan-800/70 bg-cyan-900/60 backdrop-blur-sm">
+        <div className="flex h-16 items-center justify-between border-b border-cyan-800/70 bg-cyan-900/60 px-6 backdrop-blur-sm">
           <Link to="/admin" className="flex items-center gap-2">
-            <Camera className="w-6 h-6 text-cyan-300" />
-            <span className="font-bold text-lg text-cyan-50">Lensaya Admin</span>
+            <BrandWordmark className="text-cyan-50" suffix="Admin" suffixClassName="text-cyan-100" />
           </Link>
           <button
             onClick={() => setSidebarOpen(false)}
-            className="lg:hidden text-cyan-100 hover:text-white hover:bg-cyan-800/70 rounded-lg p-1 transition-colors"
+            className="rounded-lg p-1 text-cyan-100 transition-colors hover:bg-cyan-800/70 hover:text-white lg:hidden"
           >
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Navigation */}
-        <nav className="p-4 space-y-1">
+        <nav className="space-y-1 p-4">
           {navigation.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.path;
@@ -113,13 +110,13 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                 key={item.name}
                 to={item.path}
                 onClick={() => setSidebarOpen(false)}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                className={`flex items-center gap-3 rounded-lg px-4 py-3 transition-colors ${
                   isActive
                     ? "bg-cyan-300 text-slate-900 font-medium shadow-sm"
                     : "text-cyan-100 hover:bg-cyan-800/70 hover:text-white"
                 }`}
               >
-                <Icon className="w-5 h-5" />
+                <Icon className="h-5 w-5" />
                 <span className="text-sm">{item.name}</span>
               </Link>
             );
@@ -127,38 +124,33 @@ export function AdminLayout({ children }: AdminLayoutProps) {
         </nav>
       </aside>
 
-      {/* Main Content */}
       <div className="lg:ml-64">
-        {/* Header */}
-        <header className="sticky top-0 h-16 border-b border-cyan-800/70 bg-gradient-to-r from-cyan-900 via-slate-900 to-cyan-950 backdrop-blur-sm z-30 shadow-sm">
-          <div className="h-full flex items-center justify-between px-4 sm:px-6">
+        <header className="sticky top-0 z-30 h-16 border-b border-cyan-800/70 bg-gradient-to-r from-cyan-900 via-slate-900 to-cyan-950 shadow-sm backdrop-blur-sm">
+          <div className="flex h-full items-center justify-between px-4 sm:px-6">
             <div className="flex items-center gap-4">
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="lg:hidden text-cyan-100 hover:text-white hover:bg-cyan-800/80 rounded-lg p-1 transition-colors"
+                className="rounded-lg p-1 text-cyan-100 transition-colors hover:bg-cyan-800/80 hover:text-white lg:hidden"
               >
-                <Menu className="w-6 h-6" />
+                <Menu className="h-6 w-6" />
               </button>
 
-              {/* Search */}
               <div className="relative hidden sm:block">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cyan-300" />
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-cyan-300" />
                 <input
                   type="text"
                   placeholder="Search photographers..."
-                  className="pl-10 pr-4 py-2 w-64 border border-cyan-800 bg-cyan-900/55 rounded-lg text-sm text-cyan-50 placeholder:text-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent"
+                  className="w-64 rounded-lg border border-cyan-800 bg-cyan-900/55 py-2 pl-10 pr-4 text-sm text-cyan-50 placeholder:text-cyan-300 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-cyan-400"
                 />
               </div>
             </div>
 
             <div className="flex items-center gap-4">
-              {/* Notifications */}
               <NotificationBell
-                buttonClassName="relative p-2 text-cyan-100 hover:text-white hover:bg-cyan-800/80 rounded-lg transition-colors"
-                iconClassName="w-5 h-5 text-cyan-100"
+                buttonClassName="relative rounded-lg p-2 text-cyan-100 transition-colors hover:bg-cyan-800/80 hover:text-white"
+                iconClassName="h-5 w-5 text-cyan-100"
               />
 
-              {/* Admin Profile */}
               <div ref={profileMenuRef} className="relative">
                 <button
                   type="button"
@@ -166,25 +158,25 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                     event.stopPropagation();
                     setProfileMenuOpen((current) => !current);
                   }}
-                  className="flex items-center gap-3 px-2 py-1.5 hover:bg-cyan-800/80 rounded-lg transition-colors"
+                  className="flex items-center gap-3 rounded-lg px-2 py-1.5 transition-colors hover:bg-cyan-800/80"
                 >
-                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-cyan-500 to-sky-500 text-white flex items-center justify-center font-semibold text-sm">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-sky-500 text-sm font-semibold text-white">
                     {adminInitial}
                   </div>
-                  <div className="hidden md:block text-left">
+                  <div className="hidden text-left md:block">
                     <p className="text-sm font-semibold text-cyan-50">{adminName}</p>
                     <p className="text-xs text-cyan-200">Admin</p>
                   </div>
                   <ChevronDown
-                    className={`w-4 h-4 text-cyan-200 transition-transform ${profileMenuOpen ? "rotate-180" : ""}`}
+                    className={`h-4 w-4 text-cyan-200 transition-transform ${profileMenuOpen ? "rotate-180" : ""}`}
                   />
                 </button>
 
                 {profileMenuOpen && (
-                  <div className="absolute right-0 mt-2 w-44 bg-white border border-cyan-100 rounded-lg shadow-lg z-40 py-1">
+                  <div className="absolute right-0 z-40 mt-2 w-44 rounded-lg border border-cyan-100 bg-white py-1 shadow-lg">
                     <button
                       type="button"
-                      className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-cyan-50/80"
+                      className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-cyan-50/80"
                       onClick={() => {
                         setProfileMenuOpen(false);
                         navigate("/admin/settings");
@@ -194,30 +186,24 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                     </button>
                     <button
                       type="button"
-                      className="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-cyan-50/80 inline-flex items-center gap-2"
+                      className="inline-flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-slate-700 hover:bg-cyan-50/80"
                       onClick={() => {
                         setProfileMenuOpen(false);
                         void handleLogout();
                       }}
                     >
-                      <LogOut className="w-4 h-4" />
+                      <LogOut className="h-4 w-4" />
                       Logout
                     </button>
                   </div>
                 )}
-                </div>
+              </div>
             </div>
           </div>
         </header>
 
-        {/* Page Content */}
-        <main className="p-4 sm:p-6 lg:p-8">
-          {children}
-        </main>
+        <main className="p-4 sm:p-6 lg:p-8">{children}</main>
       </div>
     </div>
   );
 }
-
-
-

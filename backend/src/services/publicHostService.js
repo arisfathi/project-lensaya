@@ -1,9 +1,12 @@
 import { env } from "../config/env.js";
 import { prisma } from "../config/prisma.js";
 import { planLimitService } from "./planLimitService.js";
+import { redisCache } from "../utils/redisCache.js";
 
 const BROKEN_DOMAIN_STATUSES = new Set(["FAILED", "BROKEN"]);
 const INACTIVE_DOMAIN_STATUSES = new Set(["PENDING", "AWAITING_DNS", "VERIFYING"]);
+const PUBLIC_HOST_CACHE_TTL_SECONDS = 30;
+const PUBLIC_HOST_CACHE_PREFIX = "cache:public-host:v1:";
 
 const PUBLIC_PROTOCOL = (() => {
   try {
@@ -25,6 +28,21 @@ const buildFallbackUrls = (username) => {
     fallbackGalleryUrl: buildUrl(host, "/gallery"),
   };
 };
+
+const toPublicHostCacheKey = (hostContext) => {
+  const host = String(hostContext?.host || "").trim().toLowerCase();
+  const hostType = String(hostContext?.hostType || "unknown").trim().toLowerCase();
+  const username = String(hostContext?.usernameCandidate || "").trim().toLowerCase();
+  if (!host || !hostContext?.isPublicSiteCandidate) return null;
+  return `${PUBLIC_HOST_CACHE_PREFIX}${hostType}:${host}:${username}`;
+};
+
+const applyHostContextMetadata = (response, hostContext) => ({
+  ...response,
+  host: hostContext?.host || response?.host || null,
+  hostSource: hostContext?.source || null,
+  hostType: hostContext?.hostType || response?.hostType || "unknown",
+});
 
 const buildResponse = ({
   hostContext,
@@ -201,18 +219,31 @@ export const publicHostService = {
       });
     }
 
+    const cacheKey = toPublicHostCacheKey(hostContext);
+    if (cacheKey) {
+      const cached = await redisCache.getJson(cacheKey);
+      if (cached && typeof cached === "object") {
+        return applyHostContextMetadata(cached, hostContext);
+      }
+    }
+
+    let resolved;
     if (hostContext.hostType === "managed_subdomain") {
-      return resolveManagedSubdomain(hostContext);
+      resolved = await resolveManagedSubdomain(hostContext);
+    } else if (hostContext.hostType === "custom_domain") {
+      resolved = await resolveCustomDomain(hostContext);
+    } else {
+      resolved = buildResponse({
+        hostContext,
+        resolutionStatus: "not_public_host",
+        message: "This host does not serve a public photographer site.",
+      });
     }
 
-    if (hostContext.hostType === "custom_domain") {
-      return resolveCustomDomain(hostContext);
+    if (cacheKey) {
+      await redisCache.setJson(cacheKey, resolved, PUBLIC_HOST_CACHE_TTL_SECONDS);
     }
 
-    return buildResponse({
-      hostContext,
-      resolutionStatus: "not_public_host",
-      message: "This host does not serve a public photographer site.",
-    });
+    return resolved;
   },
 };

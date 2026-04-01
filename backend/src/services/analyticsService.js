@@ -4,6 +4,25 @@ import { ApiError } from "../utils/apiError.js";
 import { ensureTenantOwnership, isAdminTenant } from "../utils/tenantQuery.js";
 import { planLimitService } from "./planLimitService.js";
 
+const ANALYTICS_INGEST_DEDUPE_WINDOWS_MS = {
+  PAGE_VIEW: 15000,
+  PORTFOLIO_VIEW: 5000,
+};
+
+const SOURCE_TAXONOMY = Object.freeze([
+  "direct",
+  "instagram",
+  "facebook",
+  "whatsapp",
+  "tiktok",
+  "youtube",
+  "x",
+  "search",
+  "referral",
+  "other",
+]);
+const SOURCE_TAXONOMY_SET = new Set(SOURCE_TAXONOMY);
+
 const ensureScopedReference = async (tenant, model, id, label) => {
   if (!id || !tenant || isAdminTenant(tenant)) return id || null;
 
@@ -23,8 +42,47 @@ const sanitizeSource = (value = "") =>
     .replace(/^_+|_+$/g, "")
     .slice(0, 64);
 
+const normalizeComparableHost = (value = "") => String(value || "").trim().toLowerCase().replace(/^www\./, "");
+
+const parseUrlSafely = (value = "") => {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+
+  try {
+    return new URL(raw);
+  } catch {
+    return null;
+  }
+};
+
+const classifySourceToken = (value = "") => {
+  const normalized = sanitizeSource(value);
+  if (!normalized) return "";
+  if (normalized === "ig" || normalized.includes("instagram")) return "instagram";
+  if (normalized === "fb" || normalized.includes("facebook")) return "facebook";
+  if (normalized === "wa" || normalized.includes("whatsapp")) return "whatsapp";
+  if (normalized === "tt" || normalized.includes("tiktok")) return "tiktok";
+  if (normalized.includes("youtube") || normalized.includes("youtu")) return "youtube";
+  if (normalized === "x" || normalized.includes("twitter") || normalized.includes("x_com") || normalized.includes("t_co")) {
+    return "x";
+  }
+  if (
+    normalized.includes("google") ||
+    normalized.includes("bing") ||
+    normalized.includes("yahoo") ||
+    normalized.includes("duckduckgo") ||
+    normalized.includes("search")
+  ) {
+    return "search";
+  }
+  if (normalized.includes("ref") || normalized.includes("affiliate")) return "referral";
+  if (normalized.includes("direct")) return "direct";
+  if (SOURCE_TAXONOMY_SET.has(normalized)) return normalized;
+  return "other";
+};
+
 const classifyHostSource = (hostname = "") => {
-  const host = String(hostname || "").toLowerCase();
+  const host = normalizeComparableHost(hostname);
   if (!host) return "direct";
   if (host.includes("instagram")) return "instagram";
   if (host.includes("facebook") || host.includes("fb.")) return "facebook";
@@ -38,47 +96,165 @@ const classifyHostSource = (hostname = "") => {
   return "referral";
 };
 
-const inferSourceFromReferrer = (referrer = "") => {
+const hasReferralQuerySignal = (params) => {
+  const ref = String(params.get("ref") || "").trim();
+  const referralCode = String(params.get("referral") || params.get("referral_code") || "").trim();
+  return Boolean(ref || referralCode);
+};
+
+const extractSourceFromPageSignals = ({ pageUrl, path }) => {
+  const page = parseUrlSafely(pageUrl);
+  const pathToken = String(path || "").trim();
+  const pathQueryIndex = pathToken.indexOf("?");
+  const pathQuery = pathQueryIndex >= 0 ? pathToken.slice(pathQueryIndex + 1) : "";
+  const params = new URLSearchParams(page?.search || pathQuery || "");
+
+  const utmSource = classifySourceToken(params.get("utm_source") || "");
+  if (utmSource) return utmSource;
+
+  const source = classifySourceToken(params.get("source") || "");
+  if (source) return source;
+
+  if (hasReferralQuerySignal(params)) return "referral";
+  if (params.has("gclid")) return "search";
+  if (params.has("fbclid")) return "facebook";
+  if (params.has("ttclid")) return "tiktok";
+  return "";
+};
+
+const inferSourceFromReferrer = ({ referrer = "", requestHost = "", pageUrl = "" } = {}) => {
   const value = String(referrer || "").trim();
   if (!value) return "direct";
 
   try {
     const url = new URL(value);
+    const referrerHost = normalizeComparableHost(url.hostname || "");
+    const requestComparableHost = normalizeComparableHost(requestHost);
+    const pageComparableHost = normalizeComparableHost(parseUrlSafely(pageUrl)?.hostname || "");
+
+    if (
+      referrerHost &&
+      (referrerHost === requestComparableHost ||
+        referrerHost === pageComparableHost ||
+        (requestComparableHost && requestComparableHost.endsWith(`.${referrerHost}`)) ||
+        (referrerHost && referrerHost.endsWith(`.${requestComparableHost}`)) ||
+        (pageComparableHost && pageComparableHost.endsWith(`.${referrerHost}`)) ||
+        (referrerHost && referrerHost.endsWith(`.${pageComparableHost}`)))
+    ) {
+      return "direct";
+    }
+
     return classifyHostSource(url.hostname || "");
   } catch {
     return "referral";
   }
 };
 
-const resolveSource = ({ source, referrer }) => {
-  const normalized = sanitizeSource(source);
-  if (normalized) {
-    return normalized;
+const resolveSource = ({ source, referrer, pageUrl, path, requestHost }) => {
+  const fromPageSignals = extractSourceFromPageSignals({ pageUrl, path });
+  if (fromPageSignals) {
+    return fromPageSignals;
   }
-  return inferSourceFromReferrer(referrer);
+
+  const fromSource = classifySourceToken(source);
+  if (fromSource) {
+    return fromSource;
+  }
+
+  return inferSourceFromReferrer({ referrer, requestHost, pageUrl });
+};
+
+const normalizeEventType = (eventType) => String(eventType || "").trim().toUpperCase();
+const normalizePath = (path) => {
+  const normalized = String(path || "").trim();
+  return normalized ? normalized.slice(0, 512) : null;
+};
+
+const buildDedupeWhere = ({ eventType, photographerId, serviceId, packageId, portfolioItemId, bookingId, userId, sessionId, visitorId, path, source, windowStart }) => {
+  if (!eventType || !windowStart) return null;
+  if (!visitorId && !sessionId && !userId) return null;
+
+  const identityFilter = [];
+  if (visitorId) identityFilter.push({ visitorId });
+  if (sessionId) identityFilter.push({ sessionId });
+  if (userId) identityFilter.push({ userId });
+
+  return {
+    eventType,
+    photographerId,
+    serviceId,
+    packageId,
+    portfolioItemId,
+    bookingId,
+    path,
+    source,
+    createdAt: { gte: windowStart },
+    OR: identityFilter,
+  };
 };
 
 export const analyticsService = {
   async ingest(event, tenant = null) {
+    const eventType = normalizeEventType(event.eventType);
     const photographerId = tenant?.photographerId || event.photographerId || null;
     const serviceId = await ensureScopedReference(tenant, "service", event.serviceId, "Service");
     const packageId = await ensureScopedReference(tenant, "package", event.packageId, "Package");
     const portfolioItemId = await ensureScopedReference(tenant, "portfolioItem", event.portfolioItemId, "Portfolio item");
     const bookingId = await ensureScopedReference(tenant, "booking", event.bookingId, "Booking");
+    const source = resolveSource({
+      source: event.source,
+      referrer: event.referrer,
+      pageUrl: event.pageUrl,
+      path: event.path,
+      requestHost: event.requestHost,
+    });
+    const path = normalizePath(event.path);
+    const userId = event.userId || null;
+    const sessionId = event.sessionId || null;
+    const visitorId = event.visitorId || null;
 
-    return prisma.analyticsEvent.create({
-      data: {
-        eventType: event.eventType,
+    const dedupeWindowMs = ANALYTICS_INGEST_DEDUPE_WINDOWS_MS[eventType] || 0;
+    if (dedupeWindowMs > 0) {
+      const dedupeWhere = buildDedupeWhere({
+        eventType,
         photographerId,
         serviceId,
         packageId,
         portfolioItemId,
         bookingId,
-        userId: event.userId || null,
-        sessionId: event.sessionId || null,
-        visitorId: event.visitorId || null,
-        source: resolveSource({ source: event.source, referrer: event.referrer }),
-        path: event.path || null,
+        userId,
+        sessionId,
+        visitorId,
+        path,
+        source,
+        windowStart: new Date(Date.now() - dedupeWindowMs),
+      });
+
+      if (dedupeWhere) {
+        const duplicate = await prisma.analyticsEvent.findFirst({
+          where: dedupeWhere,
+          orderBy: { createdAt: "desc" },
+        });
+
+        if (duplicate) {
+          return duplicate;
+        }
+      }
+    }
+
+    return prisma.analyticsEvent.create({
+      data: {
+        eventType,
+        photographerId,
+        serviceId,
+        packageId,
+        portfolioItemId,
+        bookingId,
+        userId,
+        sessionId,
+        visitorId,
+        source,
+        path,
         ipHash: hashIp(event.ipAddress || ""),
         userAgent: event.userAgent || null,
         referrer: event.referrer || null,
@@ -119,7 +295,13 @@ export const analyticsService = {
         portfolioItemId: data.portfolioItemId || null,
         sessionId: data.sessionId || null,
         visitorId: data.visitorId || null,
-        source: resolveSource({ source: data.source, referrer: data.referrer }),
+        source: resolveSource({
+          source: data.source,
+          referrer: data.referrer,
+          pageUrl: data.pageUrl,
+          path: data.path,
+          requestHost: data.requestHost,
+        }),
         path: data.path || null,
         ipHash: hashIp(data.ipAddress || ""),
         userAgent: data.userAgent || null,
@@ -156,23 +338,40 @@ export const analyticsService = {
     }
 
     const serviceIds = services.map((service) => service.id);
-    const groupedViews = await prisma.analyticsEvent.groupBy({
-      by: ["serviceId"],
-      where: {
-        photographerId,
-        eventType: "PORTFOLIO_VIEW",
-        serviceId: { in: serviceIds },
-      },
-      _count: {
-        _all: true,
-      },
-    });
+    let groupedViews = [];
+    try {
+      groupedViews = await prisma.analyticsDailyServiceRollup.findMany({
+        where: {
+          photographerId,
+          eventType: "PORTFOLIO_VIEW",
+          serviceId: { in: serviceIds },
+        },
+        select: {
+          serviceId: true,
+          eventCount: true,
+        },
+      });
+    } catch {
+      groupedViews = await prisma.analyticsEvent
+        .groupBy({
+          by: ["serviceId"],
+          where: {
+            photographerId,
+            eventType: "PORTFOLIO_VIEW",
+            serviceId: { in: serviceIds },
+          },
+          _count: {
+            _all: true,
+          },
+        })
+        .then((rows) => rows.map((row) => ({ serviceId: row.serviceId, eventCount: Number(row._count?._all || 0) })));
+    }
 
-    const viewCountByServiceId = new Map(
-      groupedViews
-        .filter((row) => Boolean(row.serviceId))
-        .map((row) => [row.serviceId, Number(row._count?._all || 0)])
-    );
+    const viewCountByServiceId = new Map();
+    for (const row of groupedViews) {
+      if (!row?.serviceId) continue;
+      viewCountByServiceId.set(row.serviceId, (viewCountByServiceId.get(row.serviceId) || 0) + Number(row?.eventCount || 0));
+    }
 
     const categories = services
       .map((service) => ({

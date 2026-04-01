@@ -1,5 +1,5 @@
-import { Camera } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { BrandWordmark } from './BrandWordmark';
 
 const footerLinks = {
   Product: [
@@ -9,41 +9,44 @@ const footerLinks = {
     { label: 'Showcase', to: '/#examples' },
   ],
   Resources: [
-    { label: 'Help Center', to: '/' },
-    { label: 'Blog', to: '/' },
-    { label: 'Guides', to: '/' },
+    { label: 'Help Center', to: '/help-center' },
+    { label: 'Blog', to: '/blog' },
+    { label: 'Guides', to: '/guides' },
   ],
   Company: [
-    { label: 'About', to: '/' },
-    { label: 'Contact', to: '/' },
+    { label: 'About', to: '/about' },
+    { label: 'Contact', to: '/contact' },
   ],
   Legal: [
-    { label: 'Privacy Policy', to: '/' },
-    { label: 'Terms of Service', to: '/' },
-    { label: 'Cookie Policy', to: '/' },
+    { label: 'Privacy Policy', to: '/privacy-policy' },
+    { label: 'Terms of Service', to: '/terms-of-service' },
+    { label: 'Cookie Policy', to: '/cookie-policy' },
   ],
 };
 
 export function Footer() {
   return (
-    <footer className="bg-slate-900 text-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="mb-8 grid grid-cols-2 gap-8 md:grid-cols-5">
+    <footer className="border-t border-white/10 bg-slate-950 text-white">
+      <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
+        <div className="mb-10 grid grid-cols-2 gap-8 md:grid-cols-5">
           <div className="col-span-2 md:col-span-1">
-            <div className="mb-4 flex items-center gap-2">
-              <Camera className="h-6 w-6 text-cyan-400" />
-              <span className="text-xl font-semibold">Lensaya</span>
+            <div className="mb-4">
+              <BrandWordmark className="text-white" />
             </div>
-            <p className="text-sm text-slate-400">Professional portfolio websites for photographers</p>
+            <p className="max-w-xs text-sm leading-6 text-slate-400">
+              Professional portfolio websites for photographers with premium presentation and control.
+            </p>
           </div>
 
           {Object.entries(footerLinks).map(([category, links]) => (
             <div key={category}>
-              <h4 className="mb-3 font-semibold">{category}</h4>
+              <h4 className="mb-3 text-sm font-semibold uppercase tracking-[0.16em] text-slate-200">
+                {category}
+              </h4>
               <ul className="space-y-2">
                 {links.map((link) => (
                   <li key={link.label}>
-                    <Link to={link.to} className="text-sm text-slate-400 transition-colors hover:text-white">
+                    <Link to={link.to} className="text-sm text-slate-400 transition-colors hover:text-cyan-300">
                       {link.label}
                     </Link>
                   </li>
@@ -53,8 +56,10 @@ export function Footer() {
           ))}
         </div>
 
-        <div className="border-t border-slate-800 pt-8">
-          <p className="text-center text-sm text-slate-400">(c) 2026 Lensaya. All rights reserved.</p>
+        <div className="border-t border-white/10 pt-8">
+          <p className="text-center text-sm text-slate-400">
+            (c) 2026 Lensaya. All rights reserved. Made with love in Malaysia
+          </p>
         </div>
       </div>
     </footer>

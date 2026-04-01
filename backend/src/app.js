@@ -22,6 +22,12 @@ if (typeof BigInt.prototype.toJSON !== "function") {
 
 export const app = express();
 
+const RAW_BODY_CAPTURE_PATHS = new Set(["/api/v1/billing/webhook", "/api/v1/webhooks/payments"]);
+const shouldCaptureRawBody = (url = "") => {
+  const path = String(url || "").split("?")[0];
+  return RAW_BODY_CAPTURE_PATHS.has(path);
+};
+
 const parseCookies = (header = "") => {
   if (!header || typeof header !== "string") return {};
 
@@ -58,6 +64,9 @@ app.use(
   express.json({
     limit: "1mb",
     verify: (req, _res, buf) => {
+      if (!shouldCaptureRawBody(req.originalUrl || req.url)) {
+        return;
+      }
       req.rawBody = buf?.toString("utf8") || "";
     },
   })

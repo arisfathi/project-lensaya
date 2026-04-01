@@ -3,9 +3,9 @@ import { ImageWithFallback } from './figma/ImageWithFallback';
 
 const testimonials = [
   {
-    name: 'Jessica Williams',
-    role: 'Wedding Photographer',
-    location: 'Austin, TX',
+    name: 'Raygraphy',
+    role: 'Portrait Photographer',
+    location: 'Kajang, Selangor',
     image:
       'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3b21hbiUyMHBvcnRyYWl0JTIwcHJvZmVzc2lvbmFsfGVufDF8fHx8MTc0MjU1MTIwMHww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
     quote:
@@ -15,7 +15,7 @@ const testimonials = [
   {
     name: 'David Kim',
     role: 'Commercial Photographer',
-    location: 'San Francisco, CA',
+    location: 'Setapak, Kuala Lumpur',
     image:
       'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtYW4lMjBwb3J0cmFpdCUyMHByb2Zlc3Npb25hbHxlbnwxfHx8fDE3NDI1NTEyMDB8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
     quote:
@@ -25,7 +25,7 @@ const testimonials = [
   {
     name: 'Maria Santos',
     role: 'Portrait Photographer',
-    location: 'Chicago, IL',
+    location: 'Ampang, Kuala Lumpur',
     image:
       'https://images.unsplash.com/photo-1544005313-94ddf0286df2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwyfHx3b21hbiUyMHBvcnRyYWl0JTIwcHJvZmVzc2lvbmFsfGVufDF8fHx8MTc0MjU1MTIwMHww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
     quote:

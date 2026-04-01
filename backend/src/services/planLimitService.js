@@ -3,13 +3,131 @@ import { ApiError } from "../utils/apiError.js";
 
 const PLAN_LIMIT_ERROR_MESSAGE = "Plan limit reached. Upgrade your plan.";
 const ANALYTICS_TOOLS_ERROR_MESSAGE = "Analytics tools are available on Pro and Studio plans.";
+const TEAM_SECTION_TOOLS_ERROR_MESSAGE = "Our Team is not available on your current plan.";
 const BILLING_STATUSES = ["TRIALING", "ACTIVE", "PAST_DUE", "INCOMPLETE"];
+
 const DEFAULT_ANALYTICS_TOOLS_BY_PLAN = {
   FREE: false,
   PRO: true,
   STUDIO: true,
 };
+
+const DEFAULT_TEAM_SECTION_TOOLS_BY_PLAN = {
+  FREE: false,
+  PRO: false,
+  STUDIO: true,
+};
+
+const DEFAULT_PACKAGE_FEATURES_BY_PLAN = {
+  FREE: 5,
+  PRO: 10,
+  STUDIO: 20,
+};
+
 const PLAN_ORDER = ["FREE", "PRO", "STUDIO"];
+
+const LEAD_FEATURES_BY_PLAN = {
+  FREE: {
+    filters: false,
+    historyDays: 30,
+    maxVisibleLeads: 60,
+    export: false,
+    reminders: false,
+    advancedAnalytics: false,
+    templatePack: "basic",
+    templateLimit: 1,
+    channels: { whatsapp: true, email: true },
+    upgradeTarget: "PRO",
+  },
+  PRO: {
+    filters: true,
+    historyDays: 365,
+    maxVisibleLeads: -1,
+    export: true,
+    reminders: true,
+    advancedAnalytics: true,
+    templatePack: "pro",
+    templateLimit: 8,
+    channels: { whatsapp: true, email: true },
+    upgradeTarget: "STUDIO",
+  },
+  STUDIO: {
+    filters: true,
+    historyDays: -1,
+    maxVisibleLeads: -1,
+    export: true,
+    reminders: true,
+    advancedAnalytics: true,
+    templatePack: "studio",
+    templateLimit: -1,
+    channels: { whatsapp: true, email: true },
+    upgradeTarget: null,
+  },
+};
+
+const LEAD_FOLLOW_UP_TEMPLATE_PACKS = {
+  basic: [
+    {
+      id: "basic-check-in",
+      label: "Quick check-in",
+      whatsapp:
+        "Hi {clientName}, thanks for your inquiry with {studioName}. Are you still looking for this booking slot?",
+      emailSubject: "Following up on your booking inquiry",
+      emailBody:
+        "Hi {clientName},\n\nThanks for reaching out to {studioName}. Just checking if you are still looking for the {preferredDate} slot.\n\nBest regards,\n{studioName}",
+    },
+  ],
+  pro: [
+    {
+      id: "basic-check-in",
+      label: "Quick check-in",
+      whatsapp:
+        "Hi {clientName}, thanks for your inquiry with {studioName}. Are you still looking for this booking slot?",
+      emailSubject: "Following up on your booking inquiry",
+      emailBody:
+        "Hi {clientName},\n\nThanks for reaching out to {studioName}. Just checking if you are still looking for the {preferredDate} slot.\n\nBest regards,\n{studioName}",
+    },
+    {
+      id: "pro-availability-push",
+      label: "Availability reminder",
+      whatsapp:
+        "Hi {clientName}, {studioName} here. I still have availability around {preferredDate}. Want me to lock your slot?",
+      emailSubject: "Availability update for your preferred date",
+      emailBody:
+        "Hi {clientName},\n\nI still have availability around {preferredDate}. Reply to this email and I can lock in your slot.\n\nBest regards,\n{studioName}",
+    },
+  ],
+  studio: [
+    {
+      id: "basic-check-in",
+      label: "Quick check-in",
+      whatsapp:
+        "Hi {clientName}, thanks for your inquiry with {studioName}. Are you still looking for this booking slot?",
+      emailSubject: "Following up on your booking inquiry",
+      emailBody:
+        "Hi {clientName},\n\nThanks for reaching out to {studioName}. Just checking if you are still looking for the {preferredDate} slot.\n\nBest regards,\n{studioName}",
+    },
+    {
+      id: "pro-availability-push",
+      label: "Availability reminder",
+      whatsapp:
+        "Hi {clientName}, {studioName} here. I still have availability around {preferredDate}. Want me to lock your slot?",
+      emailSubject: "Availability update for your preferred date",
+      emailBody:
+        "Hi {clientName},\n\nI still have availability around {preferredDate}. Reply to this email and I can lock in your slot.\n\nBest regards,\n{studioName}",
+    },
+    {
+      id: "studio-pricing-nudge",
+      label: "Pricing nudge",
+      whatsapp:
+        "Hi {clientName}, I can prepare a package recommendation that fits your budget and timeline. Want me to send options?",
+      emailSubject: "Package recommendations for your inquiry",
+      emailBody:
+        "Hi {clientName},\n\nI can prepare package recommendations that fit your budget and timeline. Reply and I will send options today.\n\nBest regards,\n{studioName}",
+    },
+  ],
+};
+
 const LIMIT_METRIC_CONFIG = {
   services: {
     field: "maxServices",
@@ -29,6 +147,12 @@ const LIMIT_METRIC_CONFIG = {
     displayName: "package limit per service",
     upgradeLabel: "packages per service",
   },
+  packageFeatures: {
+    field: "maxPackageFeatures",
+    noun: "package feature",
+    displayName: "package feature limit",
+    upgradeLabel: "package features",
+  },
   storage: {
     field: "storageGB",
     noun: "storage",
@@ -36,40 +160,47 @@ const LIMIT_METRIC_CONFIG = {
     upgradeLabel: "GB storage",
   },
 };
-let analyticsToolsColumnSupportedCache = null;
 
 const normalizePlanName = (value = "") => String(value || "").trim().toUpperCase();
 const isUnlimited = (value) => Number(value) < 0;
+
 const planRank = (name) => {
   const index = PLAN_ORDER.indexOf(normalizePlanName(name));
   return index === -1 ? -1 : index;
 };
+
 const comparePlansByRank = (a, b) => planRank(a?.name) - planRank(b?.name);
+
 const toPlanLabel = (name = "") => {
   const normalized = normalizePlanName(name).toLowerCase();
   if (!normalized) return "Plan";
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 };
+
 const metricLimitValue = (plan, metric) => {
   const config = LIMIT_METRIC_CONFIG[metric];
   if (!config || !plan) return null;
   return Number(plan[config.field]);
 };
+
 const hasHigherLimit = (candidateLimit, currentLimit) => {
   if (candidateLimit === null || currentLimit === null) return false;
   if (isUnlimited(currentLimit)) return false;
   if (isUnlimited(candidateLimit)) return true;
   return Number(candidateLimit) > Number(currentLimit);
 };
+
 const formatMetricLimit = (metric, limit) => {
   if (isUnlimited(limit)) return "unlimited";
   if (metric === "storage") return `${Number(limit)} GB`;
   return `${Number(limit)}`;
 };
+
 const formatUsageFraction = (used, limit) => {
   if (isUnlimited(limit)) return `${Number(used)}/unlimited`;
   return `${Number(used)}/${Number(limit)}`;
 };
+
 const metricReachedMessage = ({ metric, used, limit, planName, contextLabel, recommendation }) => {
   const config = LIMIT_METRIC_CONFIG[metric];
   if (!config) return PLAN_LIMIT_ERROR_MESSAGE;
@@ -108,14 +239,42 @@ const isMissingAnalyticsToolsColumnError = (error) => {
   return /column .*analyticsTools.* does not exist/i.test(message);
 };
 
+const isMissingTeamSectionToolsColumnError = (error) => {
+  const message = error instanceof Error ? error.message : String(error || "");
+  const code = typeof error === "object" && error !== null && "code" in error ? error.code : "";
+  if (String(code) === "P2022" && /teamSectionTools/i.test(message)) return true;
+  return /column .*teamSectionTools.* does not exist/i.test(message);
+};
+
+const isMissingPackageFeaturesColumnError = (error) => {
+  const message = error instanceof Error ? error.message : String(error || "");
+  const code = typeof error === "object" && error !== null && "code" in error ? error.code : "";
+  if (String(code) === "P2022" && /maxPackageFeatures/i.test(message)) return true;
+  return /column .*maxPackageFeatures.* does not exist/i.test(message);
+};
+
+const isMissingSubscriptionPlanDelegateError = (error) => {
+  const message = error instanceof Error ? error.message : String(error || "");
+  return (
+    /Cannot read properties of undefined \(reading 'findMany'\)/i.test(message) ||
+    /subscriptionPlan/i.test(message)
+  );
+};
+
 const normalizeLegacyPlan = (row) => {
   const normalizedName = normalizePlanName(row?.name || "FREE");
   const analyticsDefault =
     DEFAULT_ANALYTICS_TOOLS_BY_PLAN[normalizedName] ?? DEFAULT_ANALYTICS_TOOLS_BY_PLAN.FREE;
+  const teamSectionDefault =
+    DEFAULT_TEAM_SECTION_TOOLS_BY_PLAN[normalizedName] ?? DEFAULT_TEAM_SECTION_TOOLS_BY_PLAN.FREE;
+  const packageFeaturesDefault =
+    DEFAULT_PACKAGE_FEATURES_BY_PLAN[normalizedName] ?? DEFAULT_PACKAGE_FEATURES_BY_PLAN.FREE;
 
   return {
     ...row,
     analyticsTools: analyticsDefault,
+    teamSectionTools: teamSectionDefault,
+    maxPackageFeatures: Number(row?.maxPackageFeatures ?? packageFeaturesDefault),
   };
 };
 
@@ -142,52 +301,29 @@ const fetchLegacyPlans = async () => {
   return rows.map(normalizeLegacyPlan);
 };
 
-const fetchLegacyPlanByName = async (name) => {
-  const rows = await prisma.$queryRaw`
-    SELECT
-      "id",
-      "name",
-      "maxServices",
-      "maxPortfolioImages",
-      "maxPackages",
-      "storageGB",
-      "customDomain",
-      "price",
-      "currency",
-      "trialDays",
-      "referralReward",
-      "storageCostPerGB",
-      "createdAt",
-      "updatedAt"
-    FROM "SubscriptionPlan"
-    WHERE "name" = ${name}
-    LIMIT 1
-  `;
-  return rows.length ? normalizeLegacyPlan(rows[0]) : null;
-};
+const fallbackPlansWithoutDb = () => {
+  const now = new Date();
+  const defaultsByPlan = {
+    FREE: { maxServices: 3, maxPortfolioImages: 60, maxPackages: 3, maxPackageFeatures: 5, storageGB: 1, customDomain: false },
+    PRO: { maxServices: 12, maxPortfolioImages: 600, maxPackages: 10, maxPackageFeatures: 10, storageGB: 25, customDomain: true },
+    STUDIO: { maxServices: -1, maxPortfolioImages: -1, maxPackages: -1, maxPackageFeatures: 20, storageGB: -1, customDomain: true },
+  };
 
-const fetchLegacyPlanById = async (planId) => {
-  const rows = await prisma.$queryRaw`
-    SELECT
-      "id",
-      "name",
-      "maxServices",
-      "maxPortfolioImages",
-      "maxPackages",
-      "storageGB",
-      "customDomain",
-      "price",
-      "currency",
-      "trialDays",
-      "referralReward",
-      "storageCostPerGB",
-      "createdAt",
-      "updatedAt"
-    FROM "SubscriptionPlan"
-    WHERE "id" = CAST(${planId} AS UUID)
-    LIMIT 1
-  `;
-  return rows.length ? normalizeLegacyPlan(rows[0]) : null;
+  return PLAN_ORDER.map((name, index) => {
+    const row = defaultsByPlan[name] || defaultsByPlan.FREE;
+    return normalizeLegacyPlan({
+      id: `fallback-plan-${index + 1}`,
+      name,
+      ...row,
+      price: 0,
+      currency: "USD",
+      trialDays: 0,
+      referralReward: 0,
+      storageCostPerGB: 0,
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
 };
 
 const mapPlanLimits = (plan) => ({
@@ -196,12 +332,22 @@ const mapPlanLimits = (plan) => ({
   portfolioPhotos: plan.maxPortfolioImages,
   packages: plan.maxPackages,
   packagesPerService: plan.maxPackages,
+  packageFeatures: Number(
+    plan.maxPackageFeatures ?? DEFAULT_PACKAGE_FEATURES_BY_PLAN[normalizePlanName(plan.name)] ?? 5
+  ),
+  maxPackageFeatures: Number(
+    plan.maxPackageFeatures ?? DEFAULT_PACKAGE_FEATURES_BY_PLAN[normalizePlanName(plan.name)] ?? 5
+  ),
   storage: plan.storageGB,
   customDomain: plan.customDomain,
   analyticsTools:
     typeof plan.analyticsTools === "boolean"
       ? plan.analyticsTools
       : DEFAULT_ANALYTICS_TOOLS_BY_PLAN[normalizePlanName(plan.name)] ?? false,
+  teamSectionTools:
+    typeof plan.teamSectionTools === "boolean"
+      ? plan.teamSectionTools
+      : DEFAULT_TEAM_SECTION_TOOLS_BY_PLAN[normalizePlanName(plan.name)] ?? false,
 });
 
 const usageFromPhotographer = async (photographerId) => {
@@ -233,21 +379,44 @@ const usageFromPhotographer = async (photographerId) => {
 export const planLimitService = {
   PLAN_LIMIT_ERROR_MESSAGE,
   ANALYTICS_TOOLS_ERROR_MESSAGE,
+  TEAM_SECTION_TOOLS_ERROR_MESSAGE,
 
   mapPlanLimits,
 
-  async supportsAnalyticsToolsColumn() {
-    if (analyticsToolsColumnSupportedCache !== null) {
-      return analyticsToolsColumnSupportedCache;
-    }
+  async invalidatePlanCache() {
+    return true;
+  },
 
+  async supportsAnalyticsToolsColumn() {
     try {
       await prisma.$queryRaw`SELECT "analyticsTools" FROM "SubscriptionPlan" LIMIT 1`;
-      analyticsToolsColumnSupportedCache = true;
       return true;
     } catch (error) {
       if (isMissingAnalyticsToolsColumnError(error)) {
-        analyticsToolsColumnSupportedCache = false;
+        return false;
+      }
+      throw error;
+    }
+  },
+
+  async supportsTeamSectionToolsColumn() {
+    try {
+      await prisma.$queryRaw`SELECT "teamSectionTools" FROM "SubscriptionPlan" LIMIT 1`;
+      return true;
+    } catch (error) {
+      if (isMissingTeamSectionToolsColumnError(error)) {
+        return false;
+      }
+      throw error;
+    }
+  },
+
+  async supportsMaxPackageFeaturesColumn() {
+    try {
+      await prisma.$queryRaw`SELECT "maxPackageFeatures" FROM "SubscriptionPlan" LIMIT 1`;
+      return true;
+    } catch (error) {
+      if (isMissingPackageFeaturesColumnError(error)) {
         return false;
       }
       throw error;
@@ -255,21 +424,32 @@ export const planLimitService = {
   },
 
   async listAllPlans() {
-    const supportsAnalyticsTools = await this.supportsAnalyticsToolsColumn();
     let plans;
 
-    if (supportsAnalyticsTools) {
-      try {
-        plans = await prisma.subscriptionPlan.findMany({
-          orderBy: [{ name: "asc" }],
-        });
-      } catch (error) {
-        if (!isMissingAnalyticsToolsColumnError(error)) throw error;
-        analyticsToolsColumnSupportedCache = false;
+    try {
+      if (!prisma.subscriptionPlan || typeof prisma.subscriptionPlan.findMany !== "function") {
         plans = await fetchLegacyPlans();
+        ensurePlansConfigured(plans);
+        return plans;
       }
-    } else {
-      plans = await fetchLegacyPlans();
+      plans = await prisma.subscriptionPlan.findMany({
+        orderBy: [{ name: "asc" }],
+      });
+    } catch (error) {
+      const isConnectionUnavailable = String(error?.code || "") === "ECONNREFUSED";
+      if (isConnectionUnavailable) {
+        plans = fallbackPlansWithoutDb();
+      } else if (
+        isMissingAnalyticsToolsColumnError(error) ||
+        isMissingTeamSectionToolsColumnError(error) ||
+        isMissingPackageFeaturesColumnError(error)
+      ) {
+        plans = await fetchLegacyPlans();
+      } else if (isMissingSubscriptionPlanDelegateError(error)) {
+        plans = await fetchLegacyPlans();
+      } else {
+        throw error;
+      }
     }
 
     ensurePlansConfigured(plans);
@@ -282,21 +462,8 @@ export const planLimitService = {
       throw new ApiError(400, "Invalid plan name");
     }
 
-    const supportsAnalyticsTools = await this.supportsAnalyticsToolsColumn();
-    let plan = null;
-    if (supportsAnalyticsTools) {
-      try {
-        plan = await prisma.subscriptionPlan.findUnique({
-          where: { name: normalizedName },
-        });
-      } catch (error) {
-        if (!isMissingAnalyticsToolsColumnError(error)) throw error;
-        analyticsToolsColumnSupportedCache = false;
-        plan = await fetchLegacyPlanByName(normalizedName);
-      }
-    } else {
-      plan = await fetchLegacyPlanByName(normalizedName);
-    }
+    const plans = await this.listAllPlans();
+    const plan = plans.find((item) => normalizePlanName(item?.name) === normalizedName);
 
     if (!plan) {
       throw new ApiError(404, "Subscription plan not found");
@@ -305,21 +472,8 @@ export const planLimitService = {
   },
 
   async getPlanById(planId) {
-    const supportsAnalyticsTools = await this.supportsAnalyticsToolsColumn();
-    let plan = null;
-    if (supportsAnalyticsTools) {
-      try {
-        plan = await prisma.subscriptionPlan.findUnique({
-          where: { id: planId },
-        });
-      } catch (error) {
-        if (!isMissingAnalyticsToolsColumnError(error)) throw error;
-        analyticsToolsColumnSupportedCache = false;
-        plan = await fetchLegacyPlanById(planId);
-      }
-    } else {
-      plan = await fetchLegacyPlanById(planId);
-    }
+    const plans = await this.listAllPlans();
+    const plan = plans.find((item) => String(item?.id || "") === String(planId || ""));
 
     if (!plan) {
       throw new ApiError(404, "Subscription plan not found");
@@ -353,6 +507,42 @@ export const planLimitService = {
     return this.getPlanByUserId(photographer.userId);
   },
 
+  getLeadFeatureAccess(planLike) {
+    const normalized = normalizePlanName(planLike?.name || planLike || "FREE") || "FREE";
+    const defaults = LEAD_FEATURES_BY_PLAN.FREE;
+    const selected = LEAD_FEATURES_BY_PLAN[normalized] || defaults;
+
+    return {
+      plan: normalized,
+      filters: Boolean(selected.filters),
+      export: Boolean(selected.export),
+      reminders: Boolean(selected.reminders),
+      historyDays: Number(selected.historyDays),
+      maxVisibleLeads: Number(selected.maxVisibleLeads),
+      advancedAnalytics: Boolean(selected.advancedAnalytics),
+      templatePack: selected.templatePack || "basic",
+      templateLimit: Number(selected.templateLimit),
+      channels: {
+        whatsapp: Boolean(selected?.channels?.whatsapp),
+        email: Boolean(selected?.channels?.email),
+      },
+      upgradeTarget: selected.upgradeTarget || null,
+    };
+  },
+
+  getLeadFollowUpTemplates(planLike) {
+    const features = this.getLeadFeatureAccess(planLike);
+    const packName = features.templatePack || "basic";
+    const pack = LEAD_FOLLOW_UP_TEMPLATE_PACKS[packName] || LEAD_FOLLOW_UP_TEMPLATE_PACKS.basic || [];
+
+    const limit = Number(features.templateLimit);
+    if (Number.isFinite(limit) && limit >= 0) {
+      return pack.slice(0, limit);
+    }
+
+    return pack;
+  },
+
   async getUsageForPhotographer(photographerId) {
     const plan = await this.getPlanByPhotographerId(photographerId);
     const [usage, packagesPerServiceUsage] = await Promise.all([
@@ -363,7 +553,6 @@ export const planLimitService = {
       planName: plan.name,
       usage: {
         services: { used: usage.services, limit: plan.maxServices },
-        // Kept for backward compatibility where older clients read a generic "packages" usage key.
         packages: { used: usage.packages, limit: plan.maxPackages },
         packagesPerService: packagesPerServiceUsage,
         portfolioImages: { used: usage.portfolioImages, limit: plan.maxPortfolioImages },
@@ -429,13 +618,12 @@ export const planLimitService = {
     throw new ApiError(403, message);
   },
 
-  assertStorageLimit({ usedBytes, incomingBytes, storageGB }) {
-    if (isUnlimited(storageGB)) return;
-    const maxBytes = Number(storageGB) * 1024 * 1024 * 1024;
-    const projectedBytes = Number(usedBytes || 0) + Number(incomingBytes || 0);
-    if (projectedBytes > maxBytes) {
-      throw new ApiError(403, PLAN_LIMIT_ERROR_MESSAGE);
+  async assertTeamSectionToolsAccessByPhotographerId(photographerId) {
+    const plan = await this.getPlanByPhotographerId(photographerId);
+    if (!Boolean(this.mapPlanLimits(plan).teamSectionTools)) {
+      throw new ApiError(403, TEAM_SECTION_TOOLS_ERROR_MESSAGE);
     }
+    return plan;
   },
 
   async assertAnalyticsToolsAccessByPhotographerId(photographerId) {
@@ -494,3 +682,7 @@ export const planLimitService = {
     };
   },
 };
+
+
+
+

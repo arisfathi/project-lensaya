@@ -30,7 +30,7 @@ const worker = new Worker(
   },
   {
     connection: redis,
-    concurrency: env.queueConcurrency,
+    concurrency: env.workerConcurrency.analytics,
   }
 );
 const heartbeat = await startWorkerHeartbeat({
@@ -56,7 +56,7 @@ worker.on("failed", (job, error) => {
 });
 
 logger.info(
-  { queue: ANALYTICS_QUEUE_NAME, concurrency: env.queueConcurrency, workerId: heartbeat.workerId },
+  { queue: ANALYTICS_QUEUE_NAME, concurrency: env.workerConcurrency.analytics, workerId: heartbeat.workerId },
   "Analytics worker started"
 );
 

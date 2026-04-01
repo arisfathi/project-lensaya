@@ -1,0 +1,1 @@
+ALTER TYPE "CmsContentSection" ADD VALUE IF NOT EXISTS 'LEGAL';

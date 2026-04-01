@@ -33,7 +33,7 @@ const worker = new Worker(
   },
   {
     connection: redis,
-    concurrency: env.queueConcurrency,
+    concurrency: env.workerConcurrency.imageProcessing,
   }
 );
 const heartbeat = await startWorkerHeartbeat({
@@ -64,7 +64,7 @@ worker.on("failed", (job, error) => {
 });
 
 logger.info(
-  { queue: IMAGE_PROCESSING_QUEUE_NAME, concurrency: env.queueConcurrency, workerId: heartbeat.workerId },
+  { queue: IMAGE_PROCESSING_QUEUE_NAME, concurrency: env.workerConcurrency.imageProcessing, workerId: heartbeat.workerId },
   "Image-processing worker started"
 );
 

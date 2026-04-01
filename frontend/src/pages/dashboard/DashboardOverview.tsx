@@ -1,131 +1,34 @@
 import { useEffect, useMemo, useState } from "react";
-import { Eye, MessageCircle, Percent, MousePointerClick, Plus, ExternalLink, Copy, Share2, Sparkles } from "lucide-react";
-import { Link } from "react-router-dom";
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { DashboardLayout } from "../../layouts/DashboardLayout";
+import { DashboardLayout } from "../../components/dashboard/DashboardLayout";
 import { LoadingCard } from "../../components/ui/LoadingSpinner";
-import { ApiClientError, analyticsApi, billingApi, dashboardApi, getApiErrorMessage } from "../../lib/api";
+import { analyticsApi, billingApi, dashboardApi, getApiErrorMessage, isApiAccessError } from "../../lib/api";
 import { buildPublicStudioHost, toAbsoluteWebsiteUrl } from "../../lib/platform";
 import { buildPortfolioShareMessage } from "../../lib/share";
 import { useToast } from "../../contexts/ToastContext";
 import { useAuth } from "../../contexts/AuthContext";
-
-type OverviewResponse = {
-  stats: {
-    portfolioViews: number;
-    whatsappClicks: number;
-    inquiries: number;
-    conversionRate: number;
-    profileClicks?: number;
-    monthlyTraffic?: number;
-  };
-  trafficSeries: Array<{ name: string; views: number }>;
-  categorySeries: Array<{ name: string; views: number }>;
-  quickCounts: {
-    portfolioCount: number;
-    serviceCount: number;
-    packageCount: number;
-    bookingCount: number;
-  };
-  plan?: {
-    name: string;
-    price: number;
-    currency: string;
-    trialDays: number;
-  };
-  usage?: {
-    services: { used: number; limit: number };
-    packages: { used: number; limit: number };
-    packagesPerService?: {
-      used: number;
-      limit: number;
-      serviceId?: string | null;
-      serviceName?: string | null;
-      servicesAtLimit?: number;
-    };
-    portfolioImages: { used: number; limit: number };
-  };
-};
-
-type WebsiteSummary = {
-  websiteUrl: string;
-  portfolioCount: number;
-  serviceCount: number;
-  packageCount: number;
-  lastUpdated: string;
-};
-
-type CategoryItem = {
-  name: string;
-  views: number;
-};
-
-type PlanCatalogItem = {
-  id: string;
-  limits: Record<string, number | boolean>;
-};
-
-const formatNumber = (value: number) => Number(value || 0).toLocaleString();
-const PLAN_ORDER = ["FREE", "PRO", "STUDIO"] as const;
-const normalizePlanId = (value: string | null | undefined) => String(value || "FREE").trim().toUpperCase();
-const isUnlimited = (value: number) => Number(value) < 0;
-const toUsagePercent = (used: number, limit: number) => {
-  if (isUnlimited(limit) || limit <= 0) return 0;
-  return Math.max(0, Math.min(100, Math.round((used / limit) * 100)));
-};
-const formatUsageLimit = (limit: number, unit?: string) => {
-  if (isUnlimited(limit)) return "Unlimited";
-  return unit ? `${limit} ${unit}` : `${limit}`;
-};
-
-const quickActions = [
-  {
-    name: "Add Service",
-    description: "Create new service",
-    color: "bg-blue-500",
-    path: "/dashboard/services?new=1",
-  },
-  {
-    name: "Add Package",
-    description: "Define pricing package",
-    color: "bg-purple-500",
-    path: "/dashboard/packages?new=1",
-  },
-  {
-    name: "Upload Portfolio Image",
-    description: "Add new portfolio photo",
-    color: "bg-cyan-500",
-    path: "/dashboard/portfolio?new=1",
-  },
-  {
-    name: "Edit Profile",
-    description: "Update studio profile",
-    color: "bg-green-500",
-    path: "/dashboard/settings",
-  },
-  {
-    name: "Upgrade Plan",
-    description: "Unlock advanced limits",
-    color: "bg-slate-900",
-    path: "/dashboard/pricing",
-  },
-];
+import { PLAN_ORDER, QUICK_ACTIONS, REFERRAL_PROMPT_DISMISS_KEY } from "./dashboard-overview/constants";
+import { OverviewPageHeader } from "./dashboard-overview/components/OverviewPageHeader";
+import { OverviewStatsGrid } from "./dashboard-overview/components/OverviewStatsGrid";
+import { PlanUsageSection } from "./dashboard-overview/components/PlanUsageSection";
+import { QuickActionsSection } from "./dashboard-overview/components/QuickActionsSection";
+import { ReferralPromptCard } from "./dashboard-overview/components/ReferralPromptCard";
+import { TrafficAndCategorySection } from "./dashboard-overview/components/TrafficAndCategorySection";
+import { WebsiteSection } from "./dashboard-overview/components/WebsiteSection";
+import type { OverviewResponse, PlanCatalogItem, PreviewCategoryItem, UsageCard, WebsiteSummary } from "./dashboard-overview/types";
+import { formatUsageLimit, isUnlimited, normalizePlanId, toUsagePercent } from "./dashboard-overview/utils";
 
 export default function DashboardOverview() {
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
   const [website, setWebsite] = useState<WebsiteSummary | null>(null);
-  const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [planCatalog, setPlanCatalog] = useState<PlanCatalogItem[]>([]);
   const [sectionErrors, setSectionErrors] = useState<{
     overview: string | null;
     website: string | null;
-    categories: string | null;
   }>({
     overview: null,
     website: null,
-    categories: null,
   });
-  const [categoriesAccessMessage, setCategoriesAccessMessage] = useState<string | null>(null);
+  const [showReferralPrompt, setShowReferralPrompt] = useState(true);
   const [loading, setLoading] = useState(true);
 
   const { success, error } = useToast();
@@ -135,16 +38,20 @@ export default function DashboardOverview() {
   const websiteLink = toAbsoluteWebsiteUrl(websiteUrl);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    setShowReferralPrompt(window.localStorage.getItem(REFERRAL_PROMPT_DISMISS_KEY) !== "1");
+  }, []);
+
+  useEffect(() => {
     let mounted = true;
 
     const loadOverview = async () => {
       setLoading(true);
       try {
-        const [overviewResult, websiteResult, categoriesResult, plansResult] = await Promise.allSettled([
+        const [overviewResult, websiteResult] = await Promise.allSettled([
           dashboardApi.overview(),
           dashboardApi.websiteSummary(),
-          analyticsApi.categories(),
-          billingApi.plans(),
         ]);
 
         if (!mounted) return;
@@ -152,11 +59,9 @@ export default function DashboardOverview() {
         const nextErrors: {
           overview: string | null;
           website: string | null;
-          categories: string | null;
         } = {
           overview: null,
           website: null,
-          categories: null,
         };
 
         if (overviewResult.status === "fulfilled") {
@@ -173,52 +78,27 @@ export default function DashboardOverview() {
           nextErrors.website = getApiErrorMessage(websiteResult.reason, "Failed to load website summary");
         }
 
-        if (categoriesResult.status === "fulfilled") {
-          setCategories(((categoriesResult.value as { categories?: CategoryItem[] }).categories || []) as CategoryItem[]);
-          setCategoriesAccessMessage(null);
-        } else {
-          setCategories([]);
-          if (categoriesResult.reason instanceof ApiClientError && categoriesResult.reason.status === 403) {
-            setCategoriesAccessMessage(
-              getApiErrorMessage(categoriesResult.reason, "Category analytics are available on Pro and Studio plans.")
-            );
-            nextErrors.categories = null;
-          } else {
-            setCategoriesAccessMessage(null);
-            nextErrors.categories = getApiErrorMessage(categoriesResult.reason, "Failed to load categories");
-          }
-        }
-
-        if (plansResult && plansResult.status === "fulfilled") {
-          const plans = ((plansResult.value as { plans?: PlanCatalogItem[] }).plans || []) as PlanCatalogItem[];
-          setPlanCatalog(plans);
-        } else {
-          setPlanCatalog([]);
-        }
-
         setSectionErrors(nextErrors);
 
-        const failedSections = [
-          nextErrors.overview ? "overview" : null,
-          nextErrors.website ? "website" : null,
-          nextErrors.categories ? "categories" : null,
-        ].filter(Boolean);
+        const failedSections = [nextErrors.overview ? "overview" : null, nextErrors.website ? "website" : null].filter(Boolean);
+        const hasAccessError =
+          (overviewResult.status === "rejected" && isApiAccessError(overviewResult.reason)) ||
+          (websiteResult.status === "rejected" && isApiAccessError(websiteResult.reason));
 
-        if (failedSections.length > 0) {
+        if (failedSections.length > 0 && !hasAccessError) {
           error(`Some dashboard sections could not be loaded: ${failedSections.join(", ")}`);
         }
       } catch (err) {
         if (!mounted) return;
         setOverview(null);
         setWebsite(null);
-        setCategories([]);
-        setCategoriesAccessMessage(null);
         setSectionErrors({
           overview: "Failed to load overview",
           website: "Failed to load website summary",
-          categories: "Failed to load categories",
         });
-        error(getApiErrorMessage(err, "Failed to load dashboard data"));
+        if (!isApiAccessError(err)) {
+          error(getApiErrorMessage(err, "Failed to load dashboard data"));
+        }
       } finally {
         if (mounted) {
           setLoading(false);
@@ -233,18 +113,38 @@ export default function DashboardOverview() {
     };
   }, [error]);
 
-  const trafficData = useMemo(
-    () => overview?.trafficSeries || [],
-    [overview]
-  );
+  useEffect(() => {
+    let mounted = true;
+
+    const loadPlanCatalog = async () => {
+      try {
+        const result = await billingApi.plans();
+        if (!mounted) return;
+        const plans = ((result as { plans?: PlanCatalogItem[] }).plans || []) as PlanCatalogItem[];
+        setPlanCatalog(plans);
+      } catch {
+        if (mounted) {
+          setPlanCatalog([]);
+        }
+      }
+    };
+
+    void loadPlanCatalog();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const trafficData = useMemo(() => overview?.trafficSeries || [], [overview]);
 
   const categoryData = useMemo(
     () =>
-      categories.map((category) => ({
+      (overview?.categorySeries || []).map((category) => ({
         name: category.name,
         value: Number(category.views || 0),
       })),
-    [categories]
+    [overview?.categorySeries]
   );
 
   const handleCopyLink = async () => {
@@ -281,36 +181,31 @@ export default function DashboardOverview() {
     }
   };
 
-  const stats = [
-    {
-      name: "Portfolio Views",
-      value: formatNumber(overview?.stats.portfolioViews || 0),
-      icon: Eye,
-      bgColor: "bg-cyan-50",
-      iconColor: "text-cyan-500",
-    },
-    {
-      name: "WhatsApp Clicks",
-      value: formatNumber(overview?.stats.whatsappClicks || 0),
-      icon: MessageCircle,
-      bgColor: "bg-blue-50",
-      iconColor: "text-blue-500",
-    },
-    {
-      name: "Inquiries",
-      value: formatNumber(overview?.stats.inquiries || 0),
-      icon: MousePointerClick,
-      bgColor: "bg-green-50",
-      iconColor: "text-green-500",
-    },
-    {
-      name: "Conversion Rate",
-      value: `${Number(overview?.stats.conversionRate || 0).toFixed(2)}%`,
-      icon: Percent,
-      bgColor: "bg-purple-50",
-      iconColor: "text-purple-500",
-    },
-  ];
+  const hasFullAnalyticsAccess = Boolean(overview?.analyticsAccess?.hasFullAccess);
+  const analyticsUpgradeTarget = overview?.analyticsAccess?.upgradeTarget || "PRO";
+  const previewCategories = (overview?.analyticsPreview?.topCategories || []) as PreviewCategoryItem[];
+  const totalCategoriesTracked = Number(overview?.analyticsPreview?.totalCategoriesTracked || previewCategories.length);
+  const hasCategoryData = categoryData.some((category) => category.value > 0);
+
+  const trackAnalyticsUpgradeIntent = async (surface: string) => {
+    if (!overview?.photographerId) return;
+
+    try {
+      await analyticsApi.track({
+        eventType: "OTHER",
+        photographerId: overview.photographerId,
+        source: "dashboard",
+        metadata: {
+          kind: "analytics_upgrade_cta",
+          surface,
+          targetPlan: analyticsUpgradeTarget,
+          tier: overview.analyticsAccess?.tier || overview.plan?.name || "FREE",
+        },
+      });
+    } catch {
+      // Upgrade tracking should never block navigation.
+    }
+  };
 
   const planById = useMemo(
     () =>
@@ -322,7 +217,7 @@ export default function DashboardOverview() {
     [planCatalog]
   );
 
-  const usageCards = useMemo(() => {
+  const usageCards = useMemo<UsageCard[]>(() => {
     const usage = overview?.usage;
     if (!usage) return [];
 
@@ -426,10 +321,7 @@ export default function DashboardOverview() {
 
   return (
     <DashboardLayout>
-      <div className="mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-2">Dashboard</h1>
-        <p className="text-slate-600">Welcome back! Here is what is happening with your portfolio.</p>
-      </div>
+      <OverviewPageHeader />
 
       {sectionErrors.overview ? (
         <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -437,209 +329,54 @@ export default function DashboardOverview() {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
-        {stats.map((stat) => {
-          const Icon = stat.icon;
-          return (
-            <div key={stat.name} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className={`p-2 ${stat.bgColor} rounded-lg`}>
-                  <Icon className={`w-5 h-5 ${stat.iconColor}`} />
-                </div>
-                <span className="text-xs text-slate-500">Live</span>
-              </div>
-              <p className="text-2xl font-bold text-slate-900 mb-1">{stat.value}</p>
-              <p className="text-sm text-slate-600">{stat.name}</p>
-            </div>
-          );
-        })}
-      </div>
-
-      {usageCards.length > 0 ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
-          <div className="flex items-start justify-between gap-4 mb-5">
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900">Plan Usage</h3>
-              <p className="text-sm text-slate-600">Track your plan limits and upgrade before you hit hard stops.</p>
-            </div>
-            <Link
-              to="/dashboard/pricing"
-              className="inline-flex items-center px-3 py-2 rounded-lg bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 transition-colors"
-            >
-              Compare Plans
-            </Link>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {usageCards.map((item) => (
-              <div key={item.id} className="rounded-lg border border-gray-200 p-4">
-                <p className="text-sm font-medium text-slate-900">{item.label}</p>
-                <p className="mt-1 text-sm text-slate-600">
-                  {item.used} / {formatUsageLimit(item.limit)}
-                </p>
-                <div className="mt-3 h-2 w-full rounded-full bg-slate-100 overflow-hidden">
-                  <div
-                    className={`h-2 transition-all ${
-                      item.status === "critical"
-                        ? "bg-red-500"
-                        : item.status === "warning"
-                          ? "bg-amber-500"
-                          : "bg-cyan-500"
-                    }`}
-                    style={{ width: `${item.percent}%` }}
-                  />
-                </div>
-                {item.context ? <p className="mt-2 text-xs text-slate-500">{item.context}</p> : null}
-                {item.suggestionText ? (
-                  <p className="mt-2 text-xs text-cyan-700 font-medium">{item.suggestionText}</p>
-                ) : item.status === "unlimited" ? (
-                  <p className="mt-2 text-xs text-slate-500">Unlimited on your current plan.</p>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        </div>
+      {showReferralPrompt ? (
+        <ReferralPromptCard
+          onDismiss={() => {
+            if (typeof window !== "undefined") {
+              window.localStorage.setItem(REFERRAL_PROMPT_DISMISS_KEY, "1");
+            }
+            setShowReferralPrompt(false);
+          }}
+        />
       ) : null}
 
-      <div className="grid lg:grid-cols-2 gap-6 mb-8">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-slate-900 mb-4">Weekly Traffic</h3>
-          {trafficData.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-600">
-              No traffic data yet.
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={trafficData}>
-                <XAxis dataKey="name" stroke="#94a3b8" style={{ fontSize: "12px" }} />
-                <YAxis stroke="#94a3b8" style={{ fontSize: "12px" }} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#fff",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: "8px",
-                  }}
-                />
-                <Line type="monotone" dataKey="views" stroke="#06b6d4" strokeWidth={2} dot={{ fill: "#06b6d4", r: 4 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </div>
+      <OverviewStatsGrid stats={overview?.stats} />
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-slate-900 mb-4">Portfolio Views by Category</h3>
-          {categoriesAccessMessage ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">
-              <p className="font-medium text-slate-900 mb-2">Category analytics are not available on your current plan.</p>
-              <p className="mb-4">{categoriesAccessMessage}</p>
-              <Link
-                to="/dashboard/pricing"
-                className="inline-flex items-center px-4 py-2 rounded-lg bg-cyan-500 text-white text-sm font-medium hover:bg-cyan-600 transition-colors"
-              >
-                Upgrade Plan
-              </Link>
-            </div>
-          ) : sectionErrors.categories ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">
-              Category analytics are temporarily unavailable.
-              <br />
-              {sectionErrors.categories}
-            </div>
-          ) : categoryData.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-600">
-              No portfolio views yet.
-              <br />
-              Create services and upload portfolio images to start tracking analytics.
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={categoryData}>
-                <XAxis dataKey="name" stroke="#94a3b8" style={{ fontSize: "12px" }} tickLine={false} />
-                <YAxis stroke="#94a3b8" style={{ fontSize: "12px" }} tickLine={false} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#fff",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: "8px",
-                    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
-                  }}
-                />
-                <Bar dataKey="value" fill="#06b6d4" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      </div>
+      <PlanUsageSection usageCards={usageCards} />
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
-        <h3 className="text-lg font-semibold text-slate-900">Website</h3>
-        <p className="mt-1 text-sm text-slate-600">Share your public website with clients.</p>
-        {sectionErrors.website ? (
-          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            Website summary is unavailable right now. Showing fallback URL.
-          </div>
-        ) : null}
+      <TrafficAndCategorySection
+        data={{
+          trafficData,
+          categoryData,
+          hasFullAnalyticsAccess,
+          analyticsUpgradeTarget,
+          previewCategories,
+          totalCategoriesTracked,
+          hasCategoryData,
+        }}
+        actions={{
+          onTrackUpgradeIntent: (surface) => {
+            void trackAnalyticsUpgradeIntent(surface);
+          },
+        }}
+      />
 
-        <div className="mt-4 p-4 rounded-lg border border-cyan-100 bg-cyan-50">
-          <p className="text-xs uppercase tracking-wide text-slate-500">Website URL</p>
-          <p className="mt-2 text-sm sm:text-base font-medium text-cyan-700 break-all">{websiteLink}</p>
-        </div>
+      <WebsiteSection
+        data={{
+          websiteLink,
+          websiteError: sectionErrors.website,
+        }}
+        actions={{
+          onCopyLink: () => {
+            void handleCopyLink();
+          },
+          onShareLink: () => {
+            void handleShareLink();
+          },
+        }}
+      />
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          <a
-            href={websiteLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 px-4 py-2 bg-cyan-500 text-white rounded-lg hover:bg-cyan-600 transition-colors"
-          >
-            <ExternalLink className="w-4 h-4" />
-            <span>View Website</span>
-          </a>
-          <button
-            type="button"
-            onClick={() => {
-              void handleCopyLink();
-            }}
-            className="flex items-center gap-2 px-4 py-2 text-slate-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <Copy className="w-4 h-4" />
-            <span>Copy Link</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              void handleShareLink();
-            }}
-            className="flex items-center gap-2 px-4 py-2 text-slate-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <Share2 className="w-4 h-4" />
-            <span>Share</span>
-          </button>
-        </div>
-      </div>
-
-      <div className="mb-8">
-        <h3 className="text-lg font-semibold text-slate-900 mb-4">Quick Actions</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          {quickActions.map((action) => (
-            <Link
-              key={action.name}
-              to={action.path}
-              className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:border-cyan-300 hover:shadow-md transition-all"
-            >
-              <div className={`w-10 h-10 ${action.color} rounded-lg flex items-center justify-center mb-3`}>
-                {action.name === "Upgrade Plan" ? (
-                  <Sparkles className="w-5 h-5 text-white" />
-                ) : (
-                  <Plus className="w-5 h-5 text-white" />
-                )}
-              </div>
-              <h4 className="font-semibold text-slate-900 mb-1">{action.name}</h4>
-              <p className="text-sm text-slate-600">{action.description}</p>
-            </Link>
-          ))}
-        </div>
-      </div>
+      <QuickActionsSection quickActions={QUICK_ACTIONS} />
     </DashboardLayout>
   );
 }

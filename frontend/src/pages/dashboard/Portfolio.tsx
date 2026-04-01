@@ -1,44 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Filter, Star, Trash2, Upload } from "lucide-react";
-import { DashboardLayout } from "../../layouts/DashboardLayout";
-import { ImageWithFallback } from "../../components/figma/ImageWithFallback";
+import { DashboardLayout } from "../../components/dashboard/DashboardLayout";
 import { PortfolioUploader } from "../../components/upload/PortfolioUploader";
-import { Button } from "../../components/ui/Button";
 import { Modal } from "../../components/ui/Modal";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
-import { FormInput } from "../../components/ui/FormInput";
-import { Dropdown } from "../../components/ui/Dropdown";
 import { LoadingCard } from "../../components/ui/LoadingSpinner";
 import { useToast } from "../../contexts/ToastContext";
-import { portfolioApi, servicesApi, getApiErrorMessage } from "../../lib/api";
-
-type ServiceItem = {
-  id: string;
-  name: string;
-};
-
-type PortfolioItem = {
-  id: string;
-  imageUrl: string | null;
-  serviceId: string | null;
-  category: string | null;
-  featured: boolean;
-  views: number;
-  createdAt: string;
-};
-
-type EditForm = {
-  serviceId: string;
-  category: string;
-  featured: boolean;
-};
-
-const editDefaults: EditForm = {
-  serviceId: "",
-  category: "",
-  featured: false,
-};
+import { isApiAccessError, portfolioApi, servicesApi, getApiErrorMessage } from "../../lib/api";
+import { EDIT_FORM_DEFAULTS } from "./portfolio/constants";
+import { EditPortfolioModal } from "./portfolio/components/EditPortfolioModal";
+import { PortfolioCategoryFilter } from "./portfolio/components/PortfolioCategoryFilter";
+import { PortfolioGallery } from "./portfolio/components/PortfolioGallery";
+import { PortfolioHeader } from "./portfolio/components/PortfolioHeader";
+import type { EditForm, PortfolioItem, ServiceItem } from "./portfolio/types";
 
 export default function Portfolio() {
   const [items, setItems] = useState<PortfolioItem[]>([]);
@@ -53,7 +27,7 @@ export default function Portfolio() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [toggleId, setToggleId] = useState<string | null>(null);
 
-  const [editForm, setEditForm] = useState<EditForm>(editDefaults);
+  const [editForm, setEditForm] = useState<EditForm>(EDIT_FORM_DEFAULTS);
   const [editTarget, setEditTarget] = useState<PortfolioItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PortfolioItem | null>(null);
 
@@ -73,7 +47,7 @@ export default function Portfolio() {
         setItems((portfolioResult.items || []) as PortfolioItem[]);
         setServices((servicesResult.items || []) as ServiceItem[]);
       } catch (err) {
-        if (!mounted) return;
+        if (!mounted || isApiAccessError(err)) return;
         error(getApiErrorMessage(err, "Failed to load portfolio"));
       } finally {
         if (mounted) {
@@ -185,176 +159,48 @@ export default function Portfolio() {
     }
   };
 
-  const getCategoryLabel = (item: PortfolioItem) => {
-    if (item.category) return item.category;
-    if (!item.serviceId) return "Uncategorized";
-    return services.find((service) => service.id === item.serviceId)?.name || "Service";
-  };
-
   return (
     <DashboardLayout>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+      <div className="mb-4 rounded-2xl border border-slate-200/80 bg-white px-3.5 py-3.5 sm:mb-6 sm:rounded-xl sm:border-slate-200 sm:bg-linear-to-br sm:from-white sm:to-slate-50 sm:p-6 sm:shadow-sm">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-2">Portfolio</h1>
-          <p className="text-slate-600">
-            Manage your photography portfolio - {items.length} photos - {featuredCount} featured
-          </p>
-          <p className="mt-1 text-xs text-slate-500">
-            Tip: Photographers with at least 12 photos receive more inquiries.
-          </p>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-cyan-700">Creator Gallery Manager</p>
+          <h1 className="mt-2 text-lg font-semibold text-slate-900 sm:text-3xl sm:font-bold">Portfolio</h1>
+          <p className="mt-1 text-sm text-slate-600">Tip: At least 12 photos usually improves inquiry quality.</p>
         </div>
-        <Button className="px-6 py-3" onClick={() => setUploadModalOpen(true)}>
-          <Upload className="w-5 h-5" />
-          Upload Photos
-        </Button>
       </div>
+
+      <PortfolioHeader
+        totalItems={items.length}
+        featuredCount={featuredCount}
+        onUploadClick={() => setUploadModalOpen(true)}
+      />
 
       {loading ? (
         <LoadingCard label="Loading portfolio..." />
       ) : (
         <>
-          <div className="mb-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Filter className="w-5 h-5 text-slate-600" />
-              <span className="font-medium text-slate-900">Filter by category:</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {categories.map((category) => (
-                <button
-                  key={category}
-                  onClick={() => setSelectedCategory(category)}
-                  className={`px-4 py-2 rounded-lg transition-colors ${
-                    selectedCategory === category
-                      ? "bg-cyan-500 text-white"
-                      : "bg-white text-slate-600 border border-gray-300 hover:border-cyan-300"
-                  }`}
-                >
-                  {category}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {selectedCategory === "All" && featuredCount > 0 ? (
-            <div className="mb-8">
-              <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                <Star className="w-5 h-5 text-yellow-500 fill-yellow-500" />
-                Featured Portfolio
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-                {items
-                  .filter((item) => item.featured)
-                  .map((item) => (
-                    <div
-                      key={`featured-${item.id}`}
-                      className="group relative bg-white rounded-xl overflow-hidden shadow-sm border-2 border-yellow-200 hover:shadow-lg transition-all"
-                    >
-                      <div className="aspect-square overflow-hidden bg-gray-100">
-                        <ImageWithFallback
-                          src={item.imageUrl || ""}
-                          alt="Portfolio"
-                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                        />
-                      </div>
-
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                        <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium">{getCategoryLabel(item)}</span>
-                            <span className="text-xs">{item.views} views</span>
-                          </div>
-                        </div>
-                        <div className="absolute top-2 right-2 flex gap-2">
-                          <button
-                            type="button"
-                            className="p-2 bg-white/90 rounded-lg hover:bg-white transition-colors"
-                            onClick={() => {
-                              void handleToggleFeatured(item);
-                            }}
-                            disabled={toggleId === item.id}
-                          >
-                            <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                          </button>
-                          <button
-                            type="button"
-                            className="p-2 bg-white/90 rounded-lg hover:bg-white transition-colors"
-                            onClick={() => setDeleteTarget(item)}
-                          >
-                            <Trash2 className="w-4 h-4 text-red-500" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            </div>
-          ) : null}
-
-          <div>
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">
-              {selectedCategory === "All" ? "All Photos" : `${selectedCategory} Photos`}
-            </h3>
-
-            {filteredItems.length === 0 ? (
-              <div className="bg-white rounded-xl border border-dashed border-gray-300 py-12 text-center">
-                <p className="text-slate-600">No photos in this category yet.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {filteredItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className="group relative bg-white rounded-xl overflow-hidden shadow-sm border border-gray-200 hover:shadow-lg transition-all"
-                  >
-                    <div className="aspect-square overflow-hidden bg-gray-100">
-                      <ImageWithFallback
-                        src={item.imageUrl || ""}
-                        alt="Portfolio"
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                      />
-                    </div>
-
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                      <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium">{getCategoryLabel(item)}</span>
-                          <span className="text-xs">{item.views} views</span>
-                        </div>
-                      </div>
-                      <div className="absolute top-2 right-2 flex gap-2">
-                        <button
-                          type="button"
-                          className="p-2 bg-white/90 rounded-lg hover:bg-white transition-colors"
-                          onClick={() => {
-                            void handleToggleFeatured(item);
-                          }}
-                          disabled={toggleId === item.id}
-                        >
-                          <Star
-                            className={`w-4 h-4 ${item.featured ? "text-yellow-500 fill-yellow-500" : "text-slate-400"}`}
-                          />
-                        </button>
-                        <button
-                          type="button"
-                          className="p-2 bg-white/90 rounded-lg hover:bg-white transition-colors"
-                          onClick={() => openEditModal(item)}
-                        >
-                          <span className="text-xs font-semibold text-slate-600">Edit</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="p-2 bg-white/90 rounded-lg hover:bg-white transition-colors"
-                          onClick={() => setDeleteTarget(item)}
-                        >
-                          <Trash2 className="w-4 h-4 text-red-500" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <PortfolioCategoryFilter
+            categories={categories}
+            selectedCategory={selectedCategory}
+            onSelectCategory={setSelectedCategory}
+          />
+          <PortfolioGallery
+            data={{
+              items,
+              filteredItems,
+              services,
+              selectedCategory,
+              featuredCount,
+              toggleId,
+            }}
+            handlers={{
+              onToggleFeatured: (item) => {
+                void handleToggleFeatured(item);
+              },
+              onEdit: openEditModal,
+              onDelete: setDeleteTarget,
+            }}
+          />
         </>
       )}
 
@@ -371,56 +217,28 @@ export default function Portfolio() {
         />
       </Modal>
 
-      <Modal
-        open={editModalOpen}
-        onClose={() => {
-          setEditModalOpen(false);
-          setEditTarget(null);
+      <EditPortfolioModal
+        modal={{
+          open: editModalOpen,
+          saving: savingEdit,
         }}
-        title="Edit Portfolio Item"
-        footer={
-          <div className="flex justify-end gap-3">
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setEditModalOpen(false);
-                setEditTarget(null);
-              }}
-              disabled={savingEdit}
-            >
-              Cancel
-            </Button>
-            <Button onClick={() => void handleSaveEdit()} disabled={savingEdit}>
-              {savingEdit ? "Saving..." : "Save Changes"}
-            </Button>
-          </div>
-        }
-      >
-        <div className="space-y-4">
-          <Dropdown
-            label="Service"
-            value={editForm.serviceId}
-            onChange={(event) => setEditForm((current) => ({ ...current, serviceId: event.target.value }))}
-            options={[{ value: "", label: "No service" }, ...services.map((service) => ({ value: service.id, label: service.name }))]}
-          />
-
-          <FormInput
-            label="Category"
-            value={editForm.category}
-            onChange={(event) => setEditForm((current) => ({ ...current, category: event.target.value }))}
-            placeholder="Portrait"
-          />
-
-          <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={editForm.featured}
-              onChange={(event) => setEditForm((current) => ({ ...current, featured: event.target.checked }))}
-            />
-            Mark as featured
-          </label>
-        </div>
-      </Modal>
+        formState={{
+          form: editForm,
+          services,
+        }}
+        handlers={{
+          onClose: () => {
+            setEditModalOpen(false);
+            setEditTarget(null);
+          },
+          onSave: () => {
+            void handleSaveEdit();
+          },
+          onServiceIdChange: (value) => setEditForm((current) => ({ ...current, serviceId: value })),
+          onCategoryChange: (value) => setEditForm((current) => ({ ...current, category: value })),
+          onFeaturedChange: (value) => setEditForm((current) => ({ ...current, featured: value })),
+        }}
+      />
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}
@@ -436,3 +254,4 @@ export default function Portfolio() {
     </DashboardLayout>
   );
 }
+

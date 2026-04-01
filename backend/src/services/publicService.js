@@ -2,8 +2,38 @@ import { prisma } from "../config/prisma.js";
 import { getPagination, buildPagination } from "../utils/pagination.js";
 import { resolveAssetUrl, hasProcessedVariants } from "../utils/assetVariants.js";
 import { enqueueImageProcessing } from "../jobs/imageProcessingQueue.js";
+import { redisCache } from "../utils/redisCache.js";
+import { planLimitService } from "./planLimitService.js";
+import {
+  DEFAULT_PUBLIC_PRICING_CONTENT,
+  PUBLIC_PRICING_CONTENT_SETTING_KEY,
+  normalizePublicPricingContent,
+} from "../utils/publicPricingContent.js";
 
 const ACTIVE_SUBSCRIPTION_STATUSES = ["TRIALING", "ACTIVE", "PAST_DUE", "INCOMPLETE"];
+
+const PUBLIC_PROFILE_CACHE_TTL_SECONDS = 30;
+const PUBLIC_PROFILE_CACHE_PREFIX = "cache:public-profile:v1:";
+const PUBLIC_SERVICES_CACHE_TTL_SECONDS = 30;
+const PUBLIC_SERVICES_CACHE_PREFIX = "cache:public-services:v1:";
+const PUBLIC_PORTFOLIO_CACHE_TTL_SECONDS = 20;
+const PUBLIC_PORTFOLIO_CACHE_PREFIX = "cache:public-portfolio:v1:";
+const PUBLIC_GALLERY_CACHE_TTL_SECONDS = 20;
+const PUBLIC_GALLERY_CACHE_PREFIX = "cache:public-gallery:v1:";
+const PUBLIC_PACKAGES_CACHE_TTL_SECONDS = 30;
+const PUBLIC_PACKAGES_CACHE_PREFIX = "cache:public-packages:v1:";
+
+const PUBLIC_SERVICES_MAX_LIMIT = 100;
+const PUBLIC_SERVICE_PREVIEW_DEFAULT_LIMIT = 120;
+const PUBLIC_SERVICE_PREVIEW_MAX_LIMIT = 300;
+const PUBLIC_GALLERY_DEFAULT_LIMIT = 120;
+const PUBLIC_GALLERY_MAX_LIMIT = 500;
+const PUBLIC_PACKAGES_DEFAULT_LIMIT = 40;
+const PUBLIC_PACKAGES_MAX_LIMIT = 100;
+const PUBLIC_CONTENT_DEFAULT_LIMIT = 20;
+const PUBLIC_CONTENT_MAX_LIMIT = 100;
+const PUBLIC_CONTENT_SECTIONS = ["RESOURCES", "HELP_CENTER", "BLOG", "GUIDES", "ABOUT", "CONTACT", "LEGAL"];
+const DEMO_PRIORITY_USERNAME = "lensaya";
 
 const scheduleVariantBackfill = (asset) => {
   if (!asset?.id || hasProcessedVariants(asset)) return;
@@ -19,6 +49,41 @@ const resolvePublicAssetUrl = (asset, preferredVariant = "web") => {
   return resolveAssetUrl(asset, preferredVariant);
 };
 
+const toNullableText = (value, maxLength = 191) => {
+  const normalized = String(value || "").trim();
+  if (!normalized) return null;
+  return normalized.slice(0, maxLength);
+};
+
+const toPriceCents = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return Math.round(parsed * 100);
+};
+
+const toDateKey = (value) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+};
+
+const normalizeAvailabilityStatus = (value) =>
+  String(value || "").trim().toUpperCase() === "AVAILABLE" ? "available" : "booked";
+
+const normalizeTeamMembers = (members) => {
+  if (!Array.isArray(members)) return [];
+  return members
+    .map((member) => {
+      const name = toNullableText(member?.name, 191);
+      const role = toNullableText(member?.role, 191);
+      const image = toNullableText(member?.image, 1024);
+      if (!name || !role || !image) return null;
+      return { name, role, image };
+    })
+    .filter(Boolean)
+    .slice(0, 12);
+};
+
 const mapPublicPhotographer = (p) => ({
   username: p.username,
   studioName: p.studioName,
@@ -30,6 +95,7 @@ const mapPublicPhotographer = (p) => ({
   specialty: p.specialty || null,
   style: p.style || null,
 });
+
 const mapFeaturedPhotographer = (item) => {
   const photographer = item?.photographer;
   if (!photographer) return null;
@@ -49,25 +115,83 @@ const mapFeaturedPhotographer = (item) => {
     style: photographer.style || null,
   };
 };
-const toNullableText = (value, maxLength = 191) => {
-  const normalized = String(value || "").trim();
+
+const prioritizeDemoFirst = (items = []) => {
+  const normalized = Array.isArray(items) ? items.filter(Boolean) : [];
+  const index = normalized.findIndex(
+    (item) => String(item?.username || "").trim().toLowerCase() === DEMO_PRIORITY_USERNAME
+  );
+  if (index <= 0) return normalized;
+
+  const copy = normalized.slice();
+  const [demo] = copy.splice(index, 1);
+  copy.unshift(demo);
+  return copy;
+};
+
+const toPublicProfileCacheKey = (username) => {
+  const normalized = String(username || "").trim().toLowerCase();
   if (!normalized) return null;
-  return normalized.slice(0, maxLength);
+  return `${PUBLIC_PROFILE_CACHE_PREFIX}${normalized}`;
 };
-const toPriceCents = (value) => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) return null;
-  return Math.round(parsed * 100);
+
+const toPublicListCacheKey = (prefix, username, segments = []) => {
+  const normalized = String(username || "").trim().toLowerCase();
+  if (!normalized) return null;
+  const suffix = segments
+    .map((segment) => String(segment ?? "").trim().toLowerCase().replace(/[^a-z0-9:_-]+/g, "_"))
+    .join(":");
+  return `${prefix}${normalized}${suffix ? `:${suffix}` : ""}`;
 };
-const toDateKey = (value) => {
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toISOString().slice(0, 10);
-};
-const normalizeAvailabilityStatus = (value) =>
-  String(value || "").trim().toUpperCase() === "AVAILABLE" ? "available" : "booked";
 
 export const publicService = {
+  async pricingContent() {
+    const row = await prisma.platformSetting.findUnique({
+      where: { key: PUBLIC_PRICING_CONTENT_SETTING_KEY },
+      select: { value: true, updatedAt: true },
+    });
+
+    const normalized = normalizePublicPricingContent(row?.value || null, DEFAULT_PUBLIC_PRICING_CONTENT);
+
+    return {
+      ...normalized,
+      updatedAt: row?.updatedAt || null,
+    };
+  },
+
+  async content(query = {}) {
+    const section = String(query.section || "").trim().toUpperCase();
+    const safeSection = PUBLIC_CONTENT_SECTIONS.includes(section) ? section : null;
+    const requestedLimit = Number(query.limit);
+    const take = Number.isFinite(requestedLimit)
+      ? Math.max(1, Math.min(Math.floor(requestedLimit), PUBLIC_CONTENT_MAX_LIMIT))
+      : PUBLIC_CONTENT_DEFAULT_LIMIT;
+
+    const items = await prisma.cmsContent.findMany({
+      where: {
+        status: "PUBLISHED",
+        OR: [{ publishedAt: null }, { publishedAt: { lte: new Date() } }],
+        ...(safeSection ? { section: safeSection } : {}),
+      },
+      orderBy: [{ section: "asc" }, { sortOrder: "asc" }, { publishedAt: "desc" }, { createdAt: "desc" }],
+      take,
+    });
+
+    return {
+      items: items.map((item) => ({
+        id: item.id,
+        section: item.section,
+        slug: item.slug,
+        title: item.title,
+        excerpt: item.excerpt,
+        contentMarkdown: item.contentMarkdown,
+        sortOrder: item.sortOrder,
+        publishedAt: item.publishedAt,
+        updatedAt: item.updatedAt,
+      })),
+    };
+  },
+
   async featured({ limit = 6, service }) {
     const normalizedService = toNullableText(service, 128);
     const safeLimit = Math.max(1, Math.min(Number(limit) || 6, 24));
@@ -98,42 +222,28 @@ export const publicService = {
         : {}),
     };
 
+    const rows = await prisma.portfolioItem.findMany({
+      where,
+      include: {
+        asset: true,
+        photographer: true,
+      },
+      orderBy: [{ isFeatured: "desc" }, { createdAt: "desc" }, { id: "desc" }],
+      take: Math.max(safeLimit * 3, 24),
+    });
+
     const items = [];
     const seenPhotographers = new Set();
-    const batchSize = Math.max(safeLimit * 4, 24);
-    let skip = 0;
-
-    while (items.length < safeLimit) {
-      const rows = await prisma.portfolioItem.findMany({
-        where,
-        skip,
-        take: batchSize,
-        include: {
-          asset: true,
-          photographer: true,
-        },
-        orderBy: [{ isFeatured: "desc" }, { createdAt: "desc" }, { id: "desc" }],
-      });
-
-      if (!rows.length) break;
-
-      for (const row of rows) {
-        if (seenPhotographers.has(row.photographerId)) continue;
-
-        const preview = mapFeaturedPhotographer(row);
-        if (!preview) continue;
-
-        seenPhotographers.add(row.photographerId);
-        items.push(preview);
-
-        if (items.length >= safeLimit) break;
-      }
-
-      if (rows.length < batchSize) break;
-      skip += rows.length;
+    for (const row of rows) {
+      if (seenPhotographers.has(row.photographerId)) continue;
+      const preview = mapFeaturedPhotographer(row);
+      if (!preview) continue;
+      seenPhotographers.add(row.photographerId);
+      items.push(preview);
+      if (items.length >= safeLimit) break;
     }
 
-    return { items };
+    return { items: prioritizeDemoFirst(items) };
   },
 
   async directory(query) {
@@ -192,12 +302,20 @@ export const publicService = {
     ]);
 
     return {
-      items: items.map(mapPublicPhotographer),
+      items: prioritizeDemoFirst(items.map(mapPublicPhotographer)),
       pagination: buildPagination(page, limit, total),
     };
   },
 
   async profileByUsername(username) {
+    const cacheKey = toPublicProfileCacheKey(username);
+    if (cacheKey) {
+      const cached = await redisCache.getJson(cacheKey);
+      if (cached && typeof cached === "object") {
+        return cached;
+      }
+    }
+
     const p = await prisma.photographer.findFirst({
       where: { username, status: "ACTIVE" },
       include: {
@@ -215,10 +333,20 @@ export const publicService = {
       orderBy: { createdAt: "desc" },
       select: { plan: true },
     });
-    const canHideBranding = String(activeSubscription?.plan || "FREE").toUpperCase() !== "FREE";
+
+    const planName = String(activeSubscription?.plan || "FREE").toUpperCase();
+    const canHideBranding = planName !== "FREE";
     const showLensayaBranding = !(canHideBranding && p.hideBranding);
 
-    return {
+    let teamSectionAllowed = false;
+    try {
+      const plan = await planLimitService.getPlanByName(planName);
+      teamSectionAllowed = Boolean(planLimitService.mapPlanLimits(plan).teamSectionTools);
+    } catch {
+      teamSectionAllowed = planName === "STUDIO";
+    }
+
+    const response = {
       id: p.id,
       username: p.username,
       studioName: p.studioName,
@@ -229,6 +357,11 @@ export const publicService = {
       heroSubtitle: p.heroSubtitle,
       heroImageUrl: p.heroImageUrl || resolvePublicAssetUrl(p.bannerAsset, "web"),
       showHero: p.showHero,
+      teamSection: {
+        enabled: teamSectionAllowed ? Boolean(p.showTeamSection) : false,
+        canManage: false,
+        members: teamSectionAllowed ? normalizeTeamMembers(p.teamMembers) : [],
+      },
       location: p.location,
       city: p.city,
       country: p.country,
@@ -244,17 +377,48 @@ export const publicService = {
       phone: p.phone,
       themeColor: p.themeColor,
     };
+
+    if (cacheKey) {
+      await redisCache.setJson(cacheKey, response, PUBLIC_PROFILE_CACHE_TTL_SECONDS);
+    }
+
+    return response;
   },
 
-  async services(username) {
+  async services(username, query = {}) {
+    const requestedServicesLimit = Number(query?.limit);
+    const serviceTake = Number.isFinite(requestedServicesLimit)
+      ? Math.max(1, Math.min(Math.floor(requestedServicesLimit), PUBLIC_SERVICES_MAX_LIMIT))
+      : PUBLIC_SERVICES_MAX_LIMIT;
+
+    const requestedPreviewLimit = Number(query?.previewLimit);
+    const previewTake = Number.isFinite(requestedPreviewLimit)
+      ? Math.max(1, Math.min(Math.floor(requestedPreviewLimit), PUBLIC_SERVICE_PREVIEW_MAX_LIMIT))
+      : PUBLIC_SERVICE_PREVIEW_DEFAULT_LIMIT;
+
+    const cacheKey = toPublicListCacheKey(PUBLIC_SERVICES_CACHE_PREFIX, username, [
+      `services_limit:${serviceTake}`,
+      `preview_limit:${previewTake}`,
+    ]);
+    if (cacheKey) {
+      const cached = await redisCache.getJson(cacheKey);
+      if (cached && typeof cached === "object") {
+        return cached;
+      }
+    }
+
     const photographer = await prisma.photographer.findFirst({ where: { username, status: "ACTIVE" } });
     if (!photographer) return null;
 
-    const [items, portfolioImages] = await Promise.all([
+    const [totalServices, items, portfolioImages] = await Promise.all([
+      prisma.service.count({
+        where: { photographerId: photographer.id, status: "ACTIVE" },
+      }),
       prisma.service.findMany({
         where: { photographerId: photographer.id, status: "ACTIVE" },
         orderBy: { displayOrder: "asc" },
         include: { thumbnailAsset: true },
+        take: serviceTake,
       }),
       prisma.portfolioItem.findMany({
         where: {
@@ -263,10 +427,11 @@ export const publicService = {
         },
         include: { asset: true },
         orderBy: [{ isFeatured: "desc" }, { createdAt: "desc" }],
+        take: previewTake,
       }),
     ]);
 
-    return {
+    const response = {
       services: items.map((s) => ({
         id: s.id,
         name: s.name,
@@ -279,14 +444,39 @@ export const publicService = {
         imageUrl: resolvePublicAssetUrl(item.asset, "web"),
         serviceId: item.serviceId,
       })),
+      preview: {
+        servicesLimit: serviceTake,
+        previewImagesLimit: previewTake,
+        hasMoreServices: totalServices > serviceTake,
+      },
     };
+
+    if (cacheKey) {
+      await redisCache.setJson(cacheKey, response, PUBLIC_SERVICES_CACHE_TTL_SECONDS);
+    }
+
+    return response;
   },
 
-  async portfolio(username, query) {
+  async portfolio(username, query = {}) {
+    const { page, limit, skip, take } = getPagination(query);
+    const serviceId = toNullableText(query?.serviceId, 191) || "all";
+
+    const cacheKey = toPublicListCacheKey(PUBLIC_PORTFOLIO_CACHE_PREFIX, username, [
+      `page:${page}`,
+      `take:${take}`,
+      `service:${serviceId}`,
+    ]);
+    if (cacheKey) {
+      const cached = await redisCache.getJson(cacheKey);
+      if (cached && typeof cached === "object") {
+        return cached;
+      }
+    }
+
     const photographer = await prisma.photographer.findFirst({ where: { username, status: "ACTIVE" } });
     if (!photographer) return null;
 
-    const { page, limit, skip, take } = getPagination(query);
     const where = {
       photographerId: photographer.id,
       ...(query.serviceId ? { serviceId: query.serviceId } : {}),
@@ -303,7 +493,7 @@ export const publicService = {
       prisma.portfolioItem.count({ where }),
     ]);
 
-    return {
+    const response = {
       items: items.map((item) => ({
         id: item.id,
         imageUrl: resolvePublicAssetUrl(item.asset, "web"),
@@ -314,29 +504,58 @@ export const publicService = {
       })),
       pagination: buildPagination(page, limit, total),
     };
+
+    if (cacheKey) {
+      await redisCache.setJson(cacheKey, response, PUBLIC_PORTFOLIO_CACHE_TTL_SECONDS);
+    }
+
+    return response;
   },
 
-  async gallery(username, query) {
+  async gallery(username, query = {}) {
+    const { page, limit, skip } = getPagination(query);
+    const take = Math.max(1, Math.min(limit || PUBLIC_GALLERY_DEFAULT_LIMIT, PUBLIC_GALLERY_MAX_LIMIT));
+    const category = toNullableText(query?.category, 128) || "all";
+
+    const cacheKey = toPublicListCacheKey(PUBLIC_GALLERY_CACHE_PREFIX, username, [
+      `page:${page}`,
+      `take:${take}`,
+      `category:${category}`,
+    ]);
+    if (cacheKey) {
+      const cached = await redisCache.getJson(cacheKey);
+      if (cached && typeof cached === "object") {
+        return cached;
+      }
+    }
+
     const photographer = await prisma.photographer.findFirst({ where: { username, status: "ACTIVE" } });
     if (!photographer) return null;
 
-    const items = await prisma.portfolioItem.findMany({
-      where: {
-        photographerId: photographer.id,
-        ...(query.category
-          ? {
-              category: {
-                equals: query.category,
-                mode: "insensitive",
-              },
-            }
-          : {}),
-      },
-      include: { asset: true },
-      orderBy: { createdAt: "desc" },
-    });
+    const where = {
+      photographerId: photographer.id,
+      ...(query.category
+        ? {
+            category: {
+              equals: query.category,
+              mode: "insensitive",
+            },
+          }
+        : {}),
+    };
 
-    return {
+    const [items, total] = await Promise.all([
+      prisma.portfolioItem.findMany({
+        where,
+        include: { asset: true },
+        orderBy: { createdAt: "desc" },
+        skip,
+        take,
+      }),
+      prisma.portfolioItem.count({ where }),
+    ]);
+
+    const response = {
       items: items.map((item) => ({
         id: item.id,
         imageUrl: resolvePublicAssetUrl(item.asset, "web"),
@@ -346,23 +565,53 @@ export const publicService = {
         views: item.viewsCount,
         createdAt: item.createdAt,
       })),
+      pagination: buildPagination(page, take, total),
     };
+
+    if (cacheKey) {
+      await redisCache.setJson(cacheKey, response, PUBLIC_GALLERY_CACHE_TTL_SECONDS);
+    }
+
+    return response;
   },
 
-  async packages(username, query) {
+  async packages(username, query = {}) {
+    const { page, limit, skip } = getPagination(query);
+    const take = Math.max(1, Math.min(limit || PUBLIC_PACKAGES_DEFAULT_LIMIT, PUBLIC_PACKAGES_MAX_LIMIT));
+    const serviceId = toNullableText(query?.serviceId, 191) || "all";
+
+    const cacheKey = toPublicListCacheKey(PUBLIC_PACKAGES_CACHE_PREFIX, username, [
+      `page:${page}`,
+      `take:${take}`,
+      `service:${serviceId}`,
+    ]);
+    if (cacheKey) {
+      const cached = await redisCache.getJson(cacheKey);
+      if (cached && typeof cached === "object") {
+        return cached;
+      }
+    }
+
     const photographer = await prisma.photographer.findFirst({ where: { username, status: "ACTIVE" } });
     if (!photographer) return null;
 
-    const items = await prisma.package.findMany({
-      where: {
-        photographerId: photographer.id,
-        status: "ACTIVE",
-        ...(query.serviceId ? { serviceId: query.serviceId } : {}),
-      },
-      orderBy: [{ isPopular: "desc" }, { displayOrder: "asc" }],
-    });
+    const where = {
+      photographerId: photographer.id,
+      status: "ACTIVE",
+      ...(query.serviceId ? { serviceId: query.serviceId } : {}),
+    };
 
-    return {
+    const [items, total] = await Promise.all([
+      prisma.package.findMany({
+        where,
+        orderBy: [{ isPopular: "desc" }, { displayOrder: "asc" }],
+        skip,
+        take,
+      }),
+      prisma.package.count({ where }),
+    ]);
+
+    const response = {
       items: items.map((pkg) => ({
         id: pkg.id,
         serviceId: pkg.serviceId,
@@ -372,7 +621,14 @@ export const publicService = {
         duration: pkg.durationLabel,
         features: pkg.features,
       })),
+      pagination: buildPagination(page, take, total),
     };
+
+    if (cacheKey) {
+      await redisCache.setJson(cacheKey, response, PUBLIC_PACKAGES_CACHE_TTL_SECONDS);
+    }
+
+    return response;
   },
 
   async availability(username, month) {
@@ -396,7 +652,7 @@ export const publicService = {
         where: {
           photographerId: photographer.id,
           preferredDate: { gte: start, lt: end },
-          status: { in: ["PENDING", "CONFIRMED", "COMPLETED"] },
+          status: { in: ["CONFIRMED", "COMPLETED"] },
         },
         select: { preferredDate: true },
       }),
@@ -411,7 +667,9 @@ export const publicService = {
     for (const booking of bookings) {
       const key = toDateKey(booking.preferredDate);
       if (!key) continue;
-      dayMap.set(key, "booked");
+      if (!dayMap.has(key)) {
+        dayMap.set(key, "booked");
+      }
     }
 
     const mergedDays = Array.from(dayMap.entries())
@@ -427,5 +685,3 @@ export const publicService = {
     };
   },
 };
-
-

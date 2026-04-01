@@ -62,6 +62,22 @@ export const authController = {
     return sendSuccess(res, data);
   }),
 
+  verifyEmail: asyncHandler(async (req, res) => {
+    const data = await authService.verifyEmail(req.body, { requestId: req.id || null });
+    return sendSuccess(res, data);
+  }),
+
+  resendVerification: asyncHandler(async (req, res) => {
+    const data = await authService.resendVerification(
+      {
+        email: req.body.email,
+        userId: req.auth?.sub || null,
+      },
+      { requestId: req.id || null }
+    );
+    return sendSuccess(res, data);
+  }),
+
   refresh: asyncHandler(async (req, res) => {
     const data = await authService.refresh({
       refreshToken: req.body.refreshToken || req.cookies?.refreshToken || "",

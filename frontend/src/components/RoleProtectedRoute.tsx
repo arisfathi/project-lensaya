@@ -4,6 +4,8 @@ import { useAuth } from "../contexts/AuthContext";
 import { getRoleHomePath } from "../lib/roles";
 import { LoadingSpinner } from "./ui/LoadingSpinner";
 
+
+
 type RoleProtectedRouteProps = {
   children: ReactNode;
   role: "ADMIN" | "PHOTOGRAPHER";
@@ -58,3 +60,4 @@ export function GuestOnlyRoute({ children }: { children: ReactNode }) {
 
   return <>{children}</>;
 }
+

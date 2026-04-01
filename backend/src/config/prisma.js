@@ -7,6 +7,14 @@ import { applyTenantFilter, isAdminTenant } from "../utils/tenantQuery.js";
 
 const globalForPrisma = globalThis;
 const { Pool } = pg;
+const processEntry = String(process.argv?.[1] || "").toLowerCase();
+const isWorkerProcess = processEntry.includes("/workers/") || processEntry.includes("\\workers\\");
+const resolvedPoolMax =
+  env.databasePool.maxOverride > 0
+    ? env.databasePool.maxOverride
+    : isWorkerProcess
+      ? env.databasePool.maxWorker
+      : env.databasePool.maxApi;
 const tenantScopedModels = new Set([
   "Service",
   "Package",
@@ -15,6 +23,9 @@ const tenantScopedModels = new Set([
   "Availability",
   "Asset",
   "AnalyticsEvent",
+  "AnalyticsDailyEventRollup",
+  "AnalyticsDailyServiceRollup",
+  "AnalyticsDailyVisitorRollup",
   "CustomDomain",
 ]);
 const isTenantScopedModel = (model) =>
@@ -26,9 +37,9 @@ const basePrismaPool =
   globalForPrisma.basePrismaPool ||
   new Pool({
     connectionString: env.databaseUrl,
-    max: env.isProduction ? 20 : 5,
-    idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 10_000,
+    max: resolvedPoolMax,
+    idleTimeoutMillis: env.databasePool.idleTimeoutMs,
+    connectionTimeoutMillis: env.databasePool.connectionTimeoutMs,
   });
 
 const basePrismaAdapter =

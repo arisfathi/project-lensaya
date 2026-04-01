@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Link } from "react-router-dom";
 import {
-  Monitor,
-  Smartphone,
-  RefreshCw,
   ExternalLink,
   Copy,
   Edit,
@@ -13,14 +10,21 @@ import {
   Package,
   Clock,
   Check,
+  Instagram,
+  Facebook,
+  Music2,
+  MessageCircle,
 } from "lucide-react";
-import { DashboardLayout } from "../../layouts/DashboardLayout";
+import { DashboardLayout } from "../../components/dashboard/DashboardLayout";
+import { DashboardPageHero } from "../../components/dashboard/DashboardPageHero";
 import { ImageWithFallback } from "../../components/figma/ImageWithFallback";
 import { LoadingCard } from "../../components/ui/LoadingSpinner";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
-import { dashboardApi, publicApi, profileApi, uploadsApi, getApiErrorMessage } from "../../lib/api";
+import { dashboardApi, publicApi, profileApi, uploadsApi, getApiErrorMessage, isApiAccessError } from "../../lib/api";
 import { buildPublicStudioHost, toAbsoluteWebsiteUrl } from "../../lib/platform";
+import { HeroSection } from "../PhotographerPortfolio/components/PortfolioSections";
+import type { HeroSocialLink } from "../PhotographerPortfolio/types";
 
 type WebsiteSummary = {
   websiteUrl: string;
@@ -91,9 +95,7 @@ const formatLastUpdated = (value: string | undefined) => {
 };
 
 export default function WebsitePreview() {
-  const [viewMode, setViewMode] = useState<"desktop" | "mobile">("desktop");
   const [copied, setCopied] = useState(false);
-  const [previewVersion, setPreviewVersion] = useState(0);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -120,7 +122,62 @@ export default function WebsitePreview() {
   const websiteUrl = summary?.websiteUrl || fallbackDomain;
   const publicUsername = profile?.username || username;
   const publicPath = publicUsername ? `/p/${publicUsername}` : "/portfolio";
-  const previewFrameSrc = `${publicPath}?preview=${previewVersion}`;
+
+  const buildHeroSocialLinks = (): HeroSocialLink[] => {
+    if (!profile) return [];
+    const links: HeroSocialLink[] = [];
+
+    if (profile.socialLinks.instagram) {
+      links.push({
+        key: "instagram",
+        label: "Instagram",
+        href: profile.socialLinks.instagram,
+        icon: Instagram,
+        bgClass: "bg-gradient-to-br from-pink-500 to-rose-500",
+        eventType: "PROFILE_CLICK",
+        origin: "instagram_hero",
+      });
+    }
+
+    if (profile.socialLinks.facebook) {
+      links.push({
+        key: "facebook",
+        label: "Facebook",
+        href: profile.socialLinks.facebook,
+        icon: Facebook,
+        bgClass: "bg-blue-600",
+        eventType: "PROFILE_CLICK",
+        origin: "facebook_hero",
+      });
+    }
+
+    if (profile.socialLinks.tiktok) {
+      links.push({
+        key: "tiktok",
+        label: "TikTok",
+        href: profile.socialLinks.tiktok,
+        icon: Music2,
+        bgClass: "bg-slate-900",
+        eventType: "PROFILE_CLICK",
+        origin: "tiktok_hero",
+      });
+    }
+
+    if (profile.whatsappNumber) {
+      const whatsappUrl = `https://wa.me/${profile.whatsappNumber.replace(/\D/g, "")}`;
+      links.push({
+        key: "whatsapp",
+        label: "WhatsApp",
+        href: whatsappUrl,
+        icon: MessageCircle,
+        bgClass: "bg-green-500",
+        eventType: "WHATSAPP_CLICK",
+        origin: "whatsapp_hero",
+      });
+    }
+
+    return links;
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -164,6 +221,10 @@ export default function WebsitePreview() {
         setErrorMessage(null);
       } catch (err) {
         if (!mounted) return;
+        if (isApiAccessError(err)) {
+          setErrorMessage("Website preview is temporarily unavailable.");
+          return;
+        }
         const message = getApiErrorMessage(err, "Failed to load website preview");
         setErrorMessage(message);
         error(message);
@@ -180,10 +241,6 @@ export default function WebsitePreview() {
       mounted = false;
     };
   }, [error, username]);
-
-  const refreshLivePreview = () => {
-    setPreviewVersion((current) => current + 1);
-  };
 
   const handleCopyUrl = async () => {
     try {
@@ -278,7 +335,6 @@ export default function WebsitePreview() {
             }
           : current
       );
-      refreshLivePreview();
 
       success("Cover settings saved successfully");
     } catch (err) {
@@ -298,20 +354,21 @@ export default function WebsitePreview() {
 
   return (
     <DashboardLayout>
-      <div className="mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-2">Website Preview</h1>
-        <p className="text-slate-600">Preview and manage your public pages website</p>
-      </div>
+      <DashboardPageHero
+        eyebrow="Site Management Studio"
+        title="Website Preview"
+        description="Preview and manage your public pages website."
+      />
 
       {errorMessage ? (
-        <div className="bg-white rounded-xl p-6 border border-red-200 text-red-700 mb-8">{errorMessage}</div>
+        <div className="mb-6 rounded-xl border border-red-200 bg-white px-4 py-3 text-sm text-red-700 sm:mb-8 sm:p-6">{errorMessage}</div>
       ) : null}
 
-      <div className="flex flex-wrap gap-3 mb-6">
+      <div className="mb-5 grid grid-cols-2 gap-2.5 sm:mb-6 sm:flex sm:flex-wrap sm:gap-3">
         <button
           type="button"
           onClick={handleEditCoverSettings}
-          className="px-4 py-2.5 bg-cyan-500 text-white rounded-lg font-medium hover:bg-cyan-600 transition-colors flex items-center gap-2"
+          className="col-span-2 inline-flex items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 sm:col-span-1 sm:bg-cyan-500 sm:font-medium sm:hover:bg-cyan-600"
         >
           <Edit className="w-4 h-4" />
           Edit Cover Section
@@ -319,7 +376,7 @@ export default function WebsitePreview() {
         <Link
           to={publicPath}
           target="_blank"
-          className="px-4 py-2.5 border border-gray-200 text-slate-700 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center gap-2"
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-3 py-2.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-gray-50 sm:px-4 sm:text-sm sm:font-medium"
         >
           <ExternalLink className="w-4 h-4" />
           View Public Site
@@ -329,7 +386,7 @@ export default function WebsitePreview() {
           onClick={() => {
             void handleCopyUrl();
           }}
-          className="px-4 py-2.5 border border-gray-200 text-slate-700 rounded-lg font-medium hover:bg-gray-50 transition-colors flex items-center gap-2"
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 px-3 py-2.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-gray-50 sm:px-4 sm:text-sm sm:font-medium"
         >
           {copied ? (
             <>
@@ -347,14 +404,29 @@ export default function WebsitePreview() {
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2 space-y-6">
-          <div className="bg-white rounded-xl p-6 border border-gray-200">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">Website Info</h2>
+          <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white sm:rounded-xl sm:border-gray-200 sm:shadow-sm">
+            {profile && (
+              <HeroSection
+                showHeroSection={profile.showHero}
+                heroBackgroundImageUrl={profile.heroImageUrl || ""}
+                coverTitle={profile.studioName}
+                heroSubtitle={profile.heroSubtitle || ""}
+                heroSocialLinks={buildHeroSocialLinks()}
+                onSocialClick={() => {
+                  // Non-blocking analytics tracking
+                }}
+              />
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-slate-200/80 bg-white px-3.5 py-3.5 sm:rounded-xl sm:border-gray-200 sm:p-6 sm:shadow-sm">
+            <h2 className="mb-3 text-base font-semibold text-slate-900 sm:mb-4 sm:text-lg">Website Info</h2>
 
             <div className="space-y-4">
               <div>
-                <p className="text-sm text-slate-600 mb-1">Website URL</p>
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 sm:text-sm sm:font-normal sm:normal-case sm:tracking-normal sm:text-slate-600">Website URL</p>
                 <div className="flex items-center gap-2">
-                  <code className="text-sm font-medium text-cyan-600 bg-cyan-50 px-3 py-1.5 rounded-lg flex-1 truncate">
+                  <code className="flex-1 truncate rounded-lg bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-700 sm:text-sm sm:font-medium sm:text-cyan-600">
                     {websiteUrl}
                   </code>
                   <button
@@ -369,172 +441,111 @@ export default function WebsitePreview() {
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-gray-200 space-y-3">
+              <div className="grid grid-cols-2 gap-2.5 border-t border-gray-200 pt-3 sm:pt-4 sm:space-y-0">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-slate-600">
                     <ImageIcon className="w-4 h-4" />
-                    <span className="text-sm">Portfolio Images</span>
+                    <span className="text-xs sm:text-sm">Portfolio</span>
                   </div>
-                  <span className="text-sm font-semibold text-slate-900">{summary?.portfolioCount ?? portfolio.length}</span>
+                  <span className="text-xs font-semibold text-slate-900 sm:text-sm">{summary?.portfolioCount ?? portfolio.length}</span>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-slate-600">
                     <Briefcase className="w-4 h-4" />
-                    <span className="text-sm">Total Services</span>
+                    <span className="text-xs sm:text-sm">Services</span>
                   </div>
-                  <span className="text-sm font-semibold text-slate-900">{summary?.serviceCount ?? services.length}</span>
+                  <span className="text-xs font-semibold text-slate-900 sm:text-sm">{summary?.serviceCount ?? services.length}</span>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-slate-600">
                     <Package className="w-4 h-4" />
-                    <span className="text-sm">Packages</span>
+                    <span className="text-xs sm:text-sm">Packages</span>
                   </div>
-                  <span className="text-sm font-semibold text-slate-900">{summary?.packageCount ?? packages.length}</span>
+                  <span className="text-xs font-semibold text-slate-900 sm:text-sm">{summary?.packageCount ?? packages.length}</span>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-slate-600">
                     <Clock className="w-4 h-4" />
-                    <span className="text-sm">Last Updated</span>
+                    <span className="text-xs sm:text-sm">Updated</span>
                   </div>
-                  <span className="text-sm font-semibold text-slate-900">{formatLastUpdated(summary?.lastUpdated)}</span>
+                  <span className="text-[11px] font-semibold text-slate-900 sm:text-sm">{formatLastUpdated(summary?.lastUpdated)}</span>
                 </div>
               </div>
             </div>
-          </div>
-
-          <div className="bg-white rounded-xl p-6 border border-gray-200">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-semibold text-slate-900">Live Preview</h2>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={refreshLivePreview}
-                  className="px-3 py-2 rounded-md font-medium text-sm border border-gray-200 text-slate-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  Refresh
-                </button>
-                <div className="flex items-center gap-2 p-1 bg-gray-100 rounded-lg">
-                  <button
-                    type="button"
-                    onClick={() => setViewMode("desktop")}
-                    className={`px-4 py-2 rounded-md font-medium text-sm transition-colors flex items-center gap-2 ${
-                      viewMode === "desktop" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
-                    }`}
-                  >
-                    <Monitor className="w-4 h-4" />
-                    Desktop
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode("mobile")}
-                    className={`px-4 py-2 rounded-md font-medium text-sm transition-colors flex items-center gap-2 ${
-                      viewMode === "mobile" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
-                    }`}
-                  >
-                    <Smartphone className="w-4 h-4" />
-                    Mobile
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gray-100 rounded-lg p-4 sm:p-8 flex justify-center">
-              <div
-                className={`bg-white rounded-lg shadow-2xl overflow-hidden transition-all duration-300 border border-gray-200 ${
-                  viewMode === "mobile" ? "w-[375px] max-w-full" : "w-full"
-                }`}
-              >
-                <div className="h-[720px]">
-                  <iframe
-                    key={previewFrameSrc}
-                    title="Live public website preview"
-                    src={previewFrameSrc}
-                    className="w-full h-full border-0"
-                    loading="lazy"
-                    referrerPolicy="strict-origin-when-cross-origin"
-                  />
-                </div>
-              </div>
-            </div>
-            <p className="mt-4 text-sm text-slate-600">
-              Powered by Lensaya
-            </p>
           </div>
         </div>
 
         <div className="space-y-6">
-          <div className="bg-white rounded-xl p-6 border border-gray-200">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">Quick Edit</h2>
+          <div className="rounded-2xl border border-slate-200/80 bg-white px-3.5 py-3.5 sm:rounded-xl sm:border-gray-200 sm:p-6 sm:shadow-sm">
+            <h2 className="mb-3 text-base font-semibold text-slate-900 sm:mb-4 sm:text-lg">Quick Edit</h2>
 
-            <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-1 sm:space-y-2 sm:gap-0">
               <Link
                 to="/dashboard/portfolio"
-                className="flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-cyan-200 transition-colors group"
+                className="group flex items-center justify-between rounded-xl border border-slate-200 p-2.5 transition-colors hover:border-cyan-200 hover:bg-gray-50 sm:rounded-lg sm:p-3"
               >
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-cyan-50 text-cyan-500 rounded-lg group-hover:bg-cyan-100 transition-colors">
-                    <ImageIcon className="w-4 h-4" />
+                  <div className="rounded-lg bg-cyan-50 p-1.5 text-cyan-500 transition-colors group-hover:bg-cyan-100 sm:p-2">
+                    <ImageIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                   </div>
-                  <span className="font-medium text-slate-900">Edit Portfolio</span>
+                  <span className="text-xs font-semibold text-slate-900 sm:text-base sm:font-medium">Portfolio</span>
                 </div>
-                <Edit className="w-4 h-4 text-slate-400 group-hover:text-cyan-500 transition-colors" />
+                <Edit className="h-3.5 w-3.5 text-slate-400 transition-colors group-hover:text-cyan-500 sm:h-4 sm:w-4" />
               </Link>
 
               <Link
                 to="/dashboard/services"
-                className="flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-cyan-200 transition-colors group"
+                className="group flex items-center justify-between rounded-xl border border-slate-200 p-2.5 transition-colors hover:border-cyan-200 hover:bg-gray-50 sm:rounded-lg sm:p-3"
               >
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-50 text-blue-500 rounded-lg group-hover:bg-blue-100 transition-colors">
-                    <Briefcase className="w-4 h-4" />
+                  <div className="rounded-lg bg-blue-50 p-1.5 text-blue-500 transition-colors group-hover:bg-blue-100 sm:p-2">
+                    <Briefcase className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                   </div>
-                  <span className="font-medium text-slate-900">Edit Services</span>
+                  <span className="text-xs font-semibold text-slate-900 sm:text-base sm:font-medium">Services</span>
                 </div>
-                <Edit className="w-4 h-4 text-slate-400 group-hover:text-cyan-500 transition-colors" />
+                <Edit className="h-3.5 w-3.5 text-slate-400 transition-colors group-hover:text-cyan-500 sm:h-4 sm:w-4" />
               </Link>
 
               <Link
                 to="/dashboard/packages"
-                className="flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-cyan-200 transition-colors group"
+                className="group flex items-center justify-between rounded-xl border border-slate-200 p-2.5 transition-colors hover:border-cyan-200 hover:bg-gray-50 sm:rounded-lg sm:p-3"
               >
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-purple-50 text-purple-500 rounded-lg group-hover:bg-purple-100 transition-colors">
-                    <Package className="w-4 h-4" />
+                  <div className="rounded-lg bg-purple-50 p-1.5 text-purple-500 transition-colors group-hover:bg-purple-100 sm:p-2">
+                    <Package className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                   </div>
-                  <span className="font-medium text-slate-900">Edit Packages</span>
+                  <span className="text-xs font-semibold text-slate-900 sm:text-base sm:font-medium">Packages</span>
                 </div>
-                <Edit className="w-4 h-4 text-slate-400 group-hover:text-cyan-500 transition-colors" />
+                <Edit className="h-3.5 w-3.5 text-slate-400 transition-colors group-hover:text-cyan-500 sm:h-4 sm:w-4" />
               </Link>
 
               <Link
                 to="/dashboard/availability"
-                className="flex items-center justify-between p-3 rounded-lg border border-gray-200 hover:bg-gray-50 hover:border-cyan-200 transition-colors group"
+                className="group flex items-center justify-between rounded-xl border border-slate-200 p-2.5 transition-colors hover:border-cyan-200 hover:bg-gray-50 sm:rounded-lg sm:p-3"
               >
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-green-50 text-green-500 rounded-lg group-hover:bg-green-100 transition-colors">
-                    <Calendar className="w-4 h-4" />
+                  <div className="rounded-lg bg-green-50 p-1.5 text-green-500 transition-colors group-hover:bg-green-100 sm:p-2">
+                    <Calendar className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                   </div>
-                  <span className="font-medium text-slate-900">Edit Availability</span>
+                  <span className="text-xs font-semibold text-slate-900 sm:text-base sm:font-medium">Availability</span>
                 </div>
-                <Edit className="w-4 h-4 text-slate-400 group-hover:text-cyan-500 transition-colors" />
+                <Edit className="h-3.5 w-3.5 text-slate-400 transition-colors group-hover:text-cyan-500 sm:h-4 sm:w-4" />
               </Link>
             </div>
           </div>
 
-          <div ref={coverSettingsRef} className="bg-white rounded-xl p-6 border border-gray-200">
-            <h2 className="text-lg font-semibold text-slate-900 mb-2">Cover Section Settings</h2>
-            <p className="mb-6 text-sm text-slate-600">
+          <div ref={coverSettingsRef} className="rounded-2xl border border-slate-200/80 bg-white px-3.5 py-3.5 sm:rounded-xl sm:border-gray-200 sm:p-6 sm:shadow-sm">
+            <h2 className="mb-2 text-base font-semibold text-slate-900 sm:text-lg">Cover Section Settings</h2>
+            <p className="mb-4 text-xs text-slate-600 sm:mb-6 sm:text-sm">
               Your studio name is used automatically as the cover title. You can still manage the subtitle, background image, and visibility here.
             </p>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1" htmlFor="cover-subtitle">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 sm:text-sm sm:font-medium sm:normal-case sm:tracking-normal sm:text-slate-700" htmlFor="cover-subtitle">
                   Cover Subtitle
                 </label>
                 <textarea
@@ -542,21 +553,21 @@ export default function WebsitePreview() {
                   value={heroSettings.heroSubtitle}
                   onChange={(event) => handleHeroInputChange("heroSubtitle", event.target.value)}
                   rows={3}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none transition-all resize-none"
+                  className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none transition-all focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500 sm:px-4"
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Cover Background Image</label>
-                <p className="mb-2 text-xs text-slate-500">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:rounded-lg sm:bg-transparent sm:p-0">
+                <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500 sm:text-sm sm:font-medium sm:normal-case sm:tracking-normal sm:text-slate-700">Cover Background Image</label>
+                <p className="mb-2 text-[11px] text-slate-500 sm:text-xs">
                   Tip: Upload a strong cover image to make a good first impression.
                 </p>
-                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="grid grid-cols-2 gap-2.5 sm:flex sm:flex-row sm:items-center sm:gap-3">
                   <button
                     type="button"
                     onClick={() => heroImageInputRef.current?.click()}
                     disabled={uploadingHeroImage}
-                    className="px-4 py-2.5 border border-gray-300 rounded-lg text-slate-700 hover:bg-gray-50 transition-colors disabled:opacity-60"
+                    className="inline-flex items-center justify-center rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-gray-50 disabled:opacity-60 sm:px-4 sm:py-2.5 sm:text-sm sm:font-medium"
                   >
                     {uploadingHeroImage ? "Uploading..." : "Upload Image"}
                   </button>
@@ -564,7 +575,7 @@ export default function WebsitePreview() {
                     type="button"
                     onClick={handleHeroImageRemove}
                     disabled={!heroSettings.heroImageUrl || uploadingHeroImage || savingHeroSettings}
-                    className="px-4 py-2.5 border border-red-200 rounded-lg text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors disabled:opacity-60"
+                    className="inline-flex items-center justify-center rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-60 sm:px-4 sm:py-2.5 sm:text-sm sm:font-medium"
                   >
                     Delete Image
                   </button>
@@ -577,18 +588,16 @@ export default function WebsitePreview() {
                     }}
                     className="hidden"
                   />
-                  {heroSettings.heroImageUrl ? (
-                    <span className="text-xs text-slate-500">Image selected</span>
-                  ) : (
-                    <span className="text-xs text-slate-500">No image selected</span>
-                  )}
                 </div>
+                <p className="mt-2 text-[11px] text-slate-500 sm:text-xs">
+                  {heroSettings.heroImageUrl ? "Image selected" : "No image selected"}
+                </p>
                 {heroSettings.heroImageUrl ? (
-                  <div className="mt-3 rounded-lg border border-gray-200 bg-slate-50 p-2">
+                  <div className="mt-3 overflow-hidden rounded-lg border border-gray-200 bg-slate-100 p-2">
                     <ImageWithFallback
                       src={heroSettings.heroImageUrl}
                       alt="Cover preview"
-                      className="block mx-auto w-auto max-w-full h-auto max-h-[420px] object-contain"
+                      className="block mx-auto w-auto max-w-full h-auto max-h-105 object-contain"
                     />
                   </div>
                 ) : null}
@@ -603,14 +612,14 @@ export default function WebsitePreview() {
                 Show Cover Section
               </label>
 
-              <div className="pt-2">
+              <div className="pt-1">
                 <button
                   type="button"
                   onClick={() => {
                     void handleSaveHeroSettings();
                   }}
                   disabled={savingHeroSettings}
-                  className="px-6 py-2.5 bg-cyan-500 text-white rounded-lg font-medium hover:bg-cyan-600 transition-colors disabled:opacity-60"
+                  className="w-full rounded-lg bg-cyan-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-cyan-600 disabled:opacity-60 sm:w-auto sm:px-6 sm:font-medium"
                 >
                   {savingHeroSettings ? "Saving..." : "Save Changes"}
                 </button>
@@ -622,3 +631,4 @@ export default function WebsitePreview() {
     </DashboardLayout>
   );
 }
+

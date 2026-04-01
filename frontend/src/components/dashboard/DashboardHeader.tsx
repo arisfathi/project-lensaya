@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { LogOut, Menu, Search } from "lucide-react";
-import { profileApi, getApiErrorMessage } from "../../lib/api";
+import { isApiAccessError, profileApi, getApiErrorMessage } from "../../lib/api";
 import { buildPublicStudioHost } from "../../lib/platform";
 import { useToast } from "../../contexts/ToastContext";
 import { useAuth } from "../../contexts/AuthContext";
+import { useOnboarding } from "../../features/onboarding/OnboardingContext";
 import { NotificationBell } from "../notifications/NotificationBell";
 import { Avatar } from "../ui/Avatar";
 
@@ -15,6 +16,7 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   const { user, logout } = useAuth();
+  const { isVisible: isOnboardingVisible } = useOnboarding();
   const { error } = useToast();
 
   useEffect(() => {
@@ -26,7 +28,7 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
         if (!mounted) return;
         setAvatarUrl(profile.avatarUrl || null);
       } catch (err) {
-        if (!mounted) return;
+        if (!mounted || isApiAccessError(err)) return;
         error(getApiErrorMessage(err, "Failed to load profile"));
       }
     };
@@ -72,8 +74,12 @@ export function DashboardHeader({ onMenuClick }: DashboardHeaderProps) {
 
           <div className="flex items-center gap-3 pl-3 border-l border-cyan-800">
             <div className="hidden sm:block text-right">
-              <p className="text-sm font-medium text-cyan-50">{user?.fullName || "Lensaya User"}</p>
-              <p className="text-xs text-cyan-200">{user?.username ? buildPublicStudioHost(user.username) : user?.email}</p>
+              <div className="flex items-center justify-end gap-2">
+                <p className="text-sm font-medium text-cyan-50">{user?.fullName || "Lensaya User"}</p>
+              </div>
+              <p className="text-xs text-cyan-200">
+                {isOnboardingVisible ? "Studio setup in progress" : user?.username ? buildPublicStudioHost(user.username) : user?.email}
+              </p>
             </div>
 
             <Avatar

@@ -8,12 +8,86 @@ import { randomCode } from "../utils/crypto.js";
 import { ensureTenantOwnership, isAdminTenant } from "../utils/tenantQuery.js";
 import { buildPublicAssetUrl } from "../utils/assetUrl.js";
 import { resolveAssetUrl } from "../utils/assetVariants.js";
+import { redisCache } from "../utils/redisCache.js";
 import { planLimitService } from "./planLimitService.js";
 
 const purposeToAssetPurpose = {
   portfolio: "PORTFOLIO",
   avatar: "AVATAR",
   banner: "BANNER",
+};
+
+const STORAGE_USAGE_CACHE_TTL_SECONDS = 30;
+const STORAGE_USAGE_CACHE_PREFIX = "cache:upload:storage-usage:v1:";
+const BYTES_PER_GB = 1024 * 1024 * 1024;
+
+const toStorageUsageCacheKey = (photographerId) => {
+  const normalized = String(photographerId || "").trim();
+  if (!normalized) return null;
+  return `${STORAGE_USAGE_CACHE_PREFIX}${normalized}`;
+};
+
+const getPhotographerStorageUsageBytes = async (photographerId) => {
+  const cacheKey = toStorageUsageCacheKey(photographerId);
+  if (cacheKey) {
+    const cached = await redisCache.getJson(cacheKey);
+    const cachedBytes = Number(cached?.usedBytes);
+    if (Number.isFinite(cachedBytes) && cachedBytes >= 0) {
+      return cachedBytes;
+    }
+  }
+
+  const storageUsage = await prisma.asset.aggregate({
+    where: {
+      photographerId,
+      status: { in: ["PENDING", "READY"] },
+      deletedAt: null,
+    },
+    _sum: { sizeBytes: true },
+  });
+
+  const usedBytes = Number(storageUsage?._sum?.sizeBytes || 0);
+  if (cacheKey) {
+    await redisCache.setJson(cacheKey, { usedBytes }, STORAGE_USAGE_CACHE_TTL_SECONDS);
+  }
+
+  return usedBytes;
+};
+
+const bumpPhotographerStorageUsageCache = async (photographerId, deltaBytes) => {
+  const cacheKey = toStorageUsageCacheKey(photographerId);
+  if (!cacheKey) return;
+
+  const delta = Number(deltaBytes || 0);
+  if (!Number.isFinite(delta) || delta <= 0) return;
+
+  const cached = await redisCache.getJson(cacheKey);
+  const current = Number(cached?.usedBytes);
+  if (!Number.isFinite(current) || current < 0) return;
+
+  await redisCache.setJson(
+    cacheKey,
+    { usedBytes: current + delta },
+    STORAGE_USAGE_CACHE_TTL_SECONDS
+  );
+};
+
+const invalidatePhotographerStorageUsageCache = async (photographerId) => {
+  const cacheKey = toStorageUsageCacheKey(photographerId);
+  if (!cacheKey) return;
+  await redisCache.del(cacheKey);
+};
+
+const toStorageLimitBytes = (storageGb) => {
+  const parsed = Number(storageGb);
+  if (!Number.isFinite(parsed) || parsed < 0) return -1;
+  return Math.floor(parsed * BYTES_PER_GB);
+};
+
+const toUploadBytes = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return 0;
+  return Math.floor(parsed);
 };
 
 export const uploadService = {
@@ -40,6 +114,7 @@ export const uploadService = {
 
     if (resolvedPhotographerId && tenant && !isAdminTenant(tenant)) {
       const plan = await planLimitService.getPlanByPhotographerId(resolvedPhotographerId);
+      const incomingUploadBytes = toUploadBytes(size);
 
       if (assetPurpose === "PORTFOLIO") {
         const portfolioPhotoCount = await prisma.portfolioItem.count({
@@ -56,20 +131,18 @@ export const uploadService = {
         }
       }
 
-      const storageUsage = await prisma.asset.aggregate({
-        where: {
-          photographerId: resolvedPhotographerId,
-          status: { in: ["PENDING", "READY"] },
-          deletedAt: null,
-        },
-        _sum: { sizeBytes: true },
-      });
-
-      planLimitService.assertStorageLimit({
-        usedBytes: Number(storageUsage._sum.sizeBytes || 0),
-        incomingBytes: Number(size || 0),
-        storageGB: plan.storageGB,
-      });
+      const storageLimitBytes = toStorageLimitBytes(plan.storageGB);
+      if (storageLimitBytes >= 0) {
+        const usedStorageBytes = await getPhotographerStorageUsageBytes(resolvedPhotographerId);
+        const projectedStorageBytes = usedStorageBytes + incomingUploadBytes;
+        if (projectedStorageBytes > storageLimitBytes) {
+          await planLimitService.throwLimitReached({
+            metric: "storage",
+            used: Number((projectedStorageBytes / BYTES_PER_GB).toFixed(3)),
+            plan,
+          });
+        }
+      }
     }
 
     const key = `uploads/${resolvedPhotographerId || "common"}/${Date.now()}-${randomCode()}-${fileName}`;
@@ -85,10 +158,14 @@ export const uploadService = {
         objectKey: key,
         mimeType,
         originalFileName: fileName,
-        sizeBytes: size,
+        sizeBytes: toUploadBytes(size),
         cdnUrl: buildPublicAssetUrl(key),
       },
     });
+
+    if (resolvedPhotographerId) {
+      await bumpPhotographerStorageUsageCache(resolvedPhotographerId, toUploadBytes(size));
+    }
 
     const command = new PutObjectCommand({
       Bucket: env.r2.bucket,
@@ -152,6 +229,8 @@ export const uploadService = {
       where: { id: assetId },
       data: { status: "DELETED", deletedAt: new Date() },
     });
+
+    await invalidatePhotographerStorageUsageCache(asset?.photographerId || null);
 
     return { deleted: true };
   },
@@ -268,9 +347,12 @@ export const uploadService = {
       }),
     ]);
 
+    await invalidatePhotographerStorageUsageCache(photographer.id);
+
     return {
       removed: true,
       avatarUrl: null,
     };
   },
 };
+

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { TrendingUp, Users, Eye, MessageCircle, Activity } from "lucide-react";
 import { LineChart, Line, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { AdminLayout } from "../../layouts/AdminLayout";
+import { AdminLayout } from "../../components/admin/AdminLayout";
 import { LoadingCard } from "../../components/ui/LoadingSpinner";
 import { adminApi, getApiErrorMessage } from "../../lib/api";
 import { useToast } from "../../contexts/ToastContext";
@@ -78,9 +78,7 @@ export default function Analytics() {
   }, [overview.trafficSeries]);
 
   const visitorSourcesData = useMemo(() => {
-    if (!overview.sourceBreakdown.length) {
-      return [{ id: "source-direct", name: "Direct", value: 100, color: sourceColors[0] }];
-    }
+    if (!overview.sourceBreakdown.length) return [];
 
     return overview.sourceBreakdown.map((entry, index) => ({
       id: String(entry.id ?? `source-${index + 1}`),
@@ -252,3 +250,4 @@ export default function Analytics() {
     </AdminLayout>
   );
 }
+

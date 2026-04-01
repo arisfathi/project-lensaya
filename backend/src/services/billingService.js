@@ -215,8 +215,37 @@ const mapSubscriptionResponse = (subscription, usage = {}, latestPaid = null) =>
 };
 const normalizeWebhookMetadata = (payload) => {
   if (!payload || typeof payload !== "object") return {};
-  if (!payload.metadata || typeof payload.metadata !== "object" || Array.isArray(payload.metadata)) return {};
-  return payload.metadata;
+  if (payload.metadata && typeof payload.metadata === "object" && !Array.isArray(payload.metadata)) {
+    return payload.metadata;
+  }
+  if (
+    payload.data &&
+    typeof payload.data === "object" &&
+    payload.data.object &&
+    typeof payload.data.object === "object" &&
+    payload.data.object.metadata &&
+    typeof payload.data.object.metadata === "object" &&
+    !Array.isArray(payload.data.object.metadata)
+  ) {
+    return payload.data.object.metadata;
+  }
+  return {};
+};
+const resolveWebhookProvider = (payload) => {
+  const typeToken = String(payload?.stripeEventType || payload?.type || "").trim().toLowerCase();
+  if (typeToken.startsWith("checkout.") || typeToken.startsWith("invoice.") || typeToken.startsWith("customer.subscription.")) {
+    return "STRIPE";
+  }
+
+  const candidates = [payload?.provider, payload?._provider, payload?.metadata?.provider, payload?.metadata?._provider];
+  for (const candidate of candidates) {
+    const normalized = String(candidate || "").trim().toUpperCase();
+    if (["CHIP", "STRIPE", "MANUAL", "OTHER"].includes(normalized)) {
+      return normalized;
+    }
+  }
+
+  return "CHIP";
 };
 const normalizePaymentStatus = (value) => String(value || "").trim().toLowerCase();
 const toTransactionStatus = (paymentStatus) => {
@@ -260,6 +289,26 @@ const resolvePlanPricing = (plan, billingCycle = "monthly") => {
     monthlyPrice,
     yearlyPrice,
   };
+};
+const getOptionalPlanByName = async (name) => {
+  try {
+    return await planLimitService.getPlanByName(name);
+  } catch (error) {
+    if (error instanceof ApiError && error.statusCode === 404) {
+      return null;
+    }
+    throw error;
+  }
+};
+const getOptionalPlanById = async (planId) => {
+  try {
+    return await planLimitService.getPlanById(planId);
+  } catch (error) {
+    if (error instanceof ApiError && error.statusCode === 404) {
+      return null;
+    }
+    throw error;
+  }
 };
 const addPlanInterval = (date, interval = "month") => {
   const start = new Date(date);
@@ -369,8 +418,8 @@ const buildWebhookLockToken = ({ providerTransactionId, providerSubscriptionId, 
   return `billing-webhook:${token}`;
 };
 const acquireWebhookTransactionLock = async (tx, lockToken) => {
-  if (!lockToken || typeof tx?.$queryRaw !== "function") return;
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockToken}))`;
+  if (!lockToken || typeof tx?.$executeRaw !== "function") return;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockToken}))`;
 };
 const enqueuePhotographerAssetReprocessingBatch = async (photographerId, reason) => {
   if (!photographerId) return 0;
@@ -500,6 +549,17 @@ const resolvePhotographerIdForUser = async (userId, tx = prisma) => {
     },
   });
   return user?.photographer?.id || null;
+};
+const resolvePhotographerCountryForUser = async (userId, tx = prisma) => {
+  const user = await tx.user.findUnique({
+    where: { id: userId },
+    select: {
+      photographer: {
+        select: { country: true },
+      },
+    },
+  });
+  return String(user?.photographer?.country || "").trim();
 };
 const ensureFreeSubscriptionTx = async (tx, userId, photographerId = null) => {
   const existingActiveFree = await tx.subscription.findFirst({
@@ -645,10 +705,7 @@ const syncSubscriptionLifecycle = async (userId) => {
 
   if (active.status === "TRIALING" && active.trialEndsAt && active.trialEndsAt <= now) {
     if (isMockProvider) {
-      const plan = await prisma.subscriptionPlan.findUnique({
-        where: { name: active.plan },
-        select: { id: true, name: true, price: true, yearlyPrice: true, currency: true },
-      });
+      const plan = await getOptionalPlanByName(active.plan);
 
       if (plan) {
         const pricing = resolvePlanPricing(plan, billingCycle);
@@ -706,10 +763,7 @@ const syncSubscriptionLifecycle = async (userId) => {
 
   if (active.pendingPlan && isMockProvider) {
     const targetCycle = fromBillingIntervalEnum(active.pendingBillingInterval || active.billingInterval);
-    const targetPlan = await prisma.subscriptionPlan.findUnique({
-      where: { name: active.pendingPlan },
-      select: { id: true, name: true, price: true, yearlyPrice: true, currency: true },
-    });
+    const targetPlan = await getOptionalPlanByName(active.pendingPlan);
 
     if (targetPlan) {
       const pricing = resolvePlanPricing(targetPlan, targetCycle);
@@ -746,10 +800,7 @@ const syncSubscriptionLifecycle = async (userId) => {
   }
 
   if (isMockProvider) {
-    const plan = await prisma.subscriptionPlan.findUnique({
-      where: { name: active.plan },
-      select: { id: true, name: true, price: true, yearlyPrice: true, currency: true },
-    });
+    const plan = await getOptionalPlanByName(active.plan);
 
     if (plan) {
       const pricing = resolvePlanPricing(plan, billingCycle);
@@ -836,15 +887,7 @@ const resolveUsageForSubscription = async (userId, subscription) => {
         },
         _sum: { sizeBytes: true },
       }),
-      prisma.subscriptionPlan.findUnique({
-        where: { name: subscription.plan },
-        select: {
-          maxServices: true,
-          maxPackages: true,
-          maxPortfolioImages: true,
-          storageGB: true,
-        },
-      }),
+      getOptionalPlanByName(subscription.plan),
     ]);
 
   const packagesPerServiceUsage = await planLimitService.getPackagesPerServiceUsage(
@@ -1094,6 +1137,37 @@ const upsertSuccessfulSubscriptionTx = async (tx, payload) => {
 };
 
 const resolveSubscriptionPlanFromMetadata = async (metadata = {}) => {
+  if (!prisma.subscriptionPlan || typeof prisma.subscriptionPlan.findUnique !== "function") {
+    const candidateNames = [
+      metadata.planTier,
+      metadata.planName,
+      metadata.planId,
+    ]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+
+    for (const candidate of candidateNames) {
+      const tier = toPlanTier(candidate);
+      if (!tier) continue;
+
+      const price = decimalToNumber(metadata.planPrice, decimalToNumber(metadata.price, 0));
+      const yearlyPrice = decimalToNumber(metadata.planYearlyPrice, price ? price * 10 : 0);
+      const currency = String(metadata.planCurrency || metadata.currency || "USD").toUpperCase();
+      const trialDays = Number.parseInt(String(metadata.planTrialDays ?? metadata.trialDays ?? 0), 10);
+
+      return {
+        id: null,
+        name: tier,
+        currency,
+        price,
+        yearlyPrice,
+        trialDays: Number.isFinite(trialDays) && trialDays >= 0 ? trialDays : 0,
+      };
+    }
+
+    return null;
+  }
+
   const candidateIds = [
     metadata.planDbId,
     metadata.subscriptionPlanId,
@@ -1104,10 +1178,7 @@ const resolveSubscriptionPlanFromMetadata = async (metadata = {}) => {
 
   for (const candidate of candidateIds) {
     if (!isUuid(candidate)) continue;
-    const planById = await prisma.subscriptionPlan.findUnique({
-      where: { id: candidate },
-      select: { id: true, name: true, currency: true, price: true, yearlyPrice: true, trialDays: true },
-    });
+    const planById = await getOptionalPlanById(candidate);
     if (planById) return planById;
   }
 
@@ -1122,10 +1193,7 @@ const resolveSubscriptionPlanFromMetadata = async (metadata = {}) => {
   for (const candidate of candidateNames) {
     const tier = toPlanTier(candidate);
     if (!tier) continue;
-    const planByName = await prisma.subscriptionPlan.findUnique({
-      where: { name: tier },
-      select: { id: true, name: true, currency: true, price: true, yearlyPrice: true, trialDays: true },
-    });
+    const planByName = await getOptionalPlanByName(tier);
     if (planByName) return planByName;
   }
 
@@ -1163,6 +1231,7 @@ const createCheckoutSessionForPlan = async ({
   referralCode,
   billingCycle = "monthly",
   sourcePlanId,
+  requestedProvider,
   additionalMetadata = {},
 }) => {
   const planTier = toPlanTier(plan?.name);
@@ -1172,7 +1241,11 @@ const createCheckoutSessionForPlan = async ({
 
   const pricing = resolvePlanPricing(plan, billingCycle);
   const amountCents = Math.max(Math.round(pricing.unitPrice * 100), 0);
-  const runtimeProvider = billingProviderService.resolveConfiguredProvider();
+  const billingCountry = await resolvePhotographerCountryForUser(userId);
+  const runtimeProvider = billingProviderService.resolveCheckoutProvider({
+    country: billingCountry,
+    requestedProvider,
+  });
   const metadata = {
     userId,
     planDbId: plan.id,
@@ -1187,6 +1260,9 @@ const createCheckoutSessionForPlan = async ({
     billingCycle: pricing.billingCycle,
     trialDays: plan.trialDays,
     referralCode: referralCode || null,
+    billingCountry: billingCountry || null,
+    requestedProvider: requestedProvider || null,
+    resolvedProvider: runtimeProvider,
     successUrl: successUrl || null,
     cancelUrl: cancelUrl || null,
     ...additionalMetadata,
@@ -1218,6 +1294,7 @@ const createCheckoutSessionForPlan = async ({
     currency: plan.currency,
     successUrl,
     cancelUrl,
+    provider: runtimeProvider,
     metadata,
   });
 
@@ -1267,9 +1344,12 @@ export const billingService = {
             portfolioImages: plan.maxPortfolioImages,
             packages: plan.maxPackages,
             packagesPerService: plan.maxPackages,
+            packageFeatures: Number(plan.maxPackageFeatures ?? 5),
+            maxPackageFeatures: Number(plan.maxPackageFeatures ?? 5),
             storage: plan.storageGB,
             customDomain: Boolean(plan.customDomain),
             analyticsTools: Boolean(plan.analyticsTools),
+            teamSectionTools: Boolean(plan.teamSectionTools),
           },
           features: {
             lensayaSubdomain: true,
@@ -1277,6 +1357,7 @@ export const billingService = {
             advancedAnalytics: Boolean(plan.analyticsTools),
             removeLensayaBranding: String(plan.name || "").toUpperCase() !== "FREE",
             prioritySupport: String(plan.name || "").toUpperCase() !== "FREE",
+            teamSection: Boolean(plan.teamSectionTools),
           },
         };
       }),
@@ -1615,17 +1696,7 @@ export const billingService = {
       };
     }
 
-    const plan = await prisma.subscriptionPlan.findUnique({
-      where: { name: targetPlan },
-      select: {
-        id: true,
-        name: true,
-        price: true,
-        yearlyPrice: true,
-        currency: true,
-        trialDays: true,
-      },
-    });
+    const plan = await getOptionalPlanByName(targetPlan);
     if (!plan) throw new ApiError(400, "Invalid target plan");
 
     const session = await createCheckoutSessionForPlan({
@@ -1636,6 +1707,7 @@ export const billingService = {
       referralCode,
       billingCycle,
       sourcePlanId: targetPlan,
+      requestedProvider: payload?.paymentProvider,
       additionalMetadata: {
         previousPlan: currentPlan,
         previousBillingCycle: currentBillingCycle,
@@ -1779,7 +1851,7 @@ export const billingService = {
           providerSubscriptionId: `mock_sub_${randomUUID()}`,
           periodStart: now,
           periodEnd: trialEndsAt,
-          billingInterval,
+          billingInterval: billingCycle,
           status: "TRIALING",
           trialEndsAt,
         });
@@ -1808,7 +1880,7 @@ export const billingService = {
         providerSubscriptionId: `mock_sub_${randomUUID()}`,
         periodStart: now,
         periodEnd,
-        billingInterval,
+        billingInterval: billingCycle,
       });
       photographerId = result.subscription.photographerId || null;
       await tx.transaction.update({
@@ -2072,6 +2144,7 @@ export const billingService = {
     const metadataBillingCycle = normalizeBillingCycle(metadata.billingCycle || metadata.planInterval);
     const resolvedWebhookPricing = resolvePlanPricing(subscriptionPlan || {}, metadataBillingCycle);
     const referralCode = referralService.normalizeReferralCode(metadata.referralCode);
+    const webhookProvider = resolveWebhookProvider(payload);
     const incomingTransactionStatus = toTransactionStatus(payload?.status);
     const providerSubscriptionId = resolveProviderSubscriptionId(payload);
     const providerTransactionId = resolveProviderTransactionId(payload);
@@ -2123,7 +2196,7 @@ export const billingService = {
       const transactionData = {
         subscriptionId: existingTransaction?.subscriptionId || linkedSubscription?.id || null,
         userId,
-        provider: "CHIP",
+        provider: webhookProvider,
         providerTransactionId,
         status: transactionStatus,
         amountCents,
@@ -2158,9 +2231,9 @@ export const billingService = {
     const applied = await prisma.$transaction(async (tx) => {
       await acquireWebhookTransactionLock(tx, lockToken);
 
-      const transactionStore = tx.transaction || prisma.transaction;
+      const transactionStore = tx.transaction || prisma.transaction || null;
       const existingTransactionInTx =
-        providerTransactionId && typeof transactionStore.findUnique === "function"
+        providerTransactionId && transactionStore && typeof transactionStore.findUnique === "function"
           ? await transactionStore.findUnique({
               where: { providerTransactionId },
               select: { status: true, subscriptionId: true },
@@ -2214,7 +2287,7 @@ export const billingService = {
           userId: userIdInTx,
           targetPlan,
           providerSubscriptionId,
-          chipPurchaseId: providerSubscriptionId,
+          chipPurchaseId: webhookProvider === "CHIP" ? providerSubscriptionId : null,
           periodStart,
           periodEnd,
         });
@@ -2260,7 +2333,7 @@ export const billingService = {
         subscriptionId:
           subscriptionRecordInTx?.id || existingTransactionInTx?.subscriptionId || linkedSubscriptionInTx?.id || null,
         userId: userIdInTx,
-        provider: "CHIP",
+        provider: webhookProvider,
         providerTransactionId,
         status: transactionStatusInTx,
         amountCents,
@@ -2318,4 +2391,11 @@ export const billingService = {
     return { received: true };
   },
 };
+
+
+
+
+
+
+
 

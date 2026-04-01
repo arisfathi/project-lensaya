@@ -1,6 +1,16 @@
 import { buildPublicAssetUrl } from "./assetUrl.js";
 
 const toSafeString = (value) => String(value || "").trim();
+const normalizeVariantName = (value) => toSafeString(value).toLowerCase();
+
+const VARIANT_FALLBACKS = {
+  original: ["original"],
+  thumbnail: ["thumbnail", "thumb", "preview", "display", "web"],
+  thumb: ["thumbnail", "thumb", "preview", "display", "web"],
+  preview: ["preview", "display", "web"],
+  display: ["display", "preview", "web"],
+  web: ["display", "preview", "web"],
+};
 
 const readVariant = (asset, variantName) => {
   const variants = asset?.metadata?.variants;
@@ -10,9 +20,21 @@ const readVariant = (asset, variantName) => {
   return variant;
 };
 
+const getVariantOrder = (preferredVariant = "web") => {
+  const normalized = normalizeVariantName(preferredVariant) || "web";
+  const fallbackOrder = VARIANT_FALLBACKS[normalized] || VARIANT_FALLBACKS.web;
+  return Array.from(new Set([...fallbackOrder, "original"]));
+};
+
+const hasReadableVariant = (asset, variantNames) =>
+  variantNames.some((variantName) => {
+    const variant = readVariant(asset, variantName);
+    return Boolean(toSafeString(variant?.cdnUrl || variant?.url || variant?.objectKey));
+  });
+
 export const buildVariantObjectKey = (originalObjectKey, variantName) => {
   const safeOriginalKey = toSafeString(originalObjectKey).replace(/^\/+/, "");
-  const safeVariant = toSafeString(variantName).toLowerCase();
+  const safeVariant = normalizeVariantName(variantName);
   if (!safeOriginalKey || !safeVariant) {
     return safeOriginalKey;
   }
@@ -24,12 +46,15 @@ export const buildVariantObjectKey = (originalObjectKey, variantName) => {
 };
 
 export const resolveAssetUrl = (asset, preferredVariant = "web") => {
-  const preferred = toSafeString(preferredVariant).toLowerCase() || "web";
-  const variantOrder = [
-    preferred,
-    preferred === "thumb" ? "web" : "thumb",
-    "original",
-  ];
+  const variantOrder = getVariantOrder(preferredVariant);
+  const processingStatus = normalizeVariantName(asset?.metadata?.imageProcessing?.status);
+  const assetUrl = toSafeString(asset?.cdnUrl);
+
+  // Passthrough metadata may include synthetic variant URLs that do not exist physically.
+  // In that mode, trust the persisted asset CDN URL first.
+  if (processingStatus === "passthrough" && assetUrl) {
+    return assetUrl;
+  }
 
   for (const variantName of variantOrder) {
     const variant = readVariant(asset, variantName);
@@ -43,18 +68,13 @@ export const resolveAssetUrl = (asset, preferredVariant = "web") => {
     }
   }
 
-  const assetUrl = toSafeString(asset?.cdnUrl);
   if (assetUrl) return assetUrl;
   const objectKey = toSafeString(asset?.objectKey);
   return buildPublicAssetUrl(objectKey) || null;
 };
 
 export const hasProcessedVariants = (asset) => {
-  const web = readVariant(asset, "web");
-  const thumb = readVariant(asset, "thumb");
-  const hasWeb = Boolean(toSafeString(web?.objectKey || web?.cdnUrl || web?.url));
-  const hasThumb = Boolean(toSafeString(thumb?.objectKey || thumb?.cdnUrl || thumb?.url));
-  return hasWeb && hasThumb;
+  return hasReadableVariant(asset, ["thumbnail", "thumb", "preview", "display", "web"]);
 };
 
 export const listAssetObjectKeys = (asset) => {
@@ -73,3 +93,4 @@ export const listAssetObjectKeys = (asset) => {
 
   return Array.from(keys);
 };
+

@@ -3,15 +3,36 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { authApi, getApiErrorMessage } from "../lib/api";
 import { clearAuthTokens } from "../lib/auth";
 import { isActualPublicSiteHostCandidate } from "../lib/platform";
+import { clearUserData } from "../lib/metaPixel";
 
 type AuthUser = {
   id: string;
   role: string;
   fullName: string;
   email: string;
+  emailVerifiedAt: string | null;
   username: string | null;
   plan: string | null;
   status: string;
+  leadFeatures?: {
+    plan: string;
+    filters: boolean;
+    export: boolean;
+    reminders: boolean;
+    historyDays: number;
+    maxVisibleLeads: number;
+    advancedAnalytics: boolean;
+    templatePack: string;
+    templateLimit: number;
+    channels: {
+      whatsapp: boolean;
+      email: boolean;
+    };
+    upgradeTarget: string | null;
+  };
+  planFeatures?: {
+    teamSectionTools: boolean;
+  };
 };
 
 type AuthContextValue = {
@@ -103,7 +124,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let canceled = false;
     const bootstrap = async () => {
-      if (isActualPublicSiteHostCandidate()) {
+      const pathname = typeof window !== "undefined" ? window.location.pathname : "";
+      const isPublicMarketingRoute = pathname === "/" || pathname === "/pricing" || pathname === "/photographers";
+
+      if (isActualPublicSiteHostCandidate() || isPublicMarketingRoute) {
         clearAuthTokens();
         setUser(null);
         setIsBootstrapping(false);
@@ -154,6 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Ignore logout API failures and clear local session anyway.
     } finally {
       clearAuthTokens();
+      clearUserData();
       setUser(null);
     }
   }, []);
@@ -186,3 +211,5 @@ export function useAuth() {
 export function getAuthErrorMessage(error: unknown) {
   return getApiErrorMessage(error, "Authentication failed");
 }
+
+
