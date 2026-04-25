@@ -10,6 +10,7 @@ RUN npm ci
 
 COPY . .
 
+ENV DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres?schema=public
 RUN npm run prisma:generate
 
 ENV NODE_ENV=production
