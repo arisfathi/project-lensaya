@@ -9,22 +9,25 @@
 
 	encode zstd gzip
 
+	# NOTE: use `handle` blocks for *all* routing so that the SPA file server
+	# does not short-circuit API/health requests.
+
 	@www host www.{$BASE_DOMAIN}
 	handle @www {
 		redir https://{$BASE_DOMAIN}{uri} 308
 	}
 
-	@health path /health
-	handle @health {
+	handle /health* {
 		reverse_proxy backend:4000
 	}
 
-	@api path /api/*
-	handle @api {
+	handle /api/* {
 		reverse_proxy backend:4000
 	}
 
-	root * /srv
-	try_files {path} /index.html
-	file_server
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
 }
