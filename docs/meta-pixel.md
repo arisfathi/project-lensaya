@@ -121,7 +121,7 @@ trackLead({
 Should be tracked from the backend when a subscription is created/confirmed.
 
 **Where to implement**:
-- In backend billing webhook handlers (`chipWebhook.test.js`, `stripeBilling.js`)
+- In backend billing webhook handlers (`stripeBilling.test.js`)
 - Add pixel HTML to receipt emails
 
 **Example** (in backend email template):
@@ -327,7 +327,7 @@ Use this checklist before enabling campaigns that depend on Meta Pixel conversio
 
 Purchase rollout note:
 - Keep `Purchase` unwired for now.
-- Frontend `checkout=success` query flags are not the most reliable paid confirmation source because provider redirects can occur before final paid settlement in webhook-driven flows.
+- Frontend checkout return pages (`/checkout/success`) are not the most reliable paid confirmation source because provider redirects can occur before final paid settlement in webhook-driven flows.
 - Recommended next step is wiring `Purchase` from webhook-confirmed paid transitions once that confirmation is exposed through a stable, deduplicated surface.
 
 ### Unit Testing

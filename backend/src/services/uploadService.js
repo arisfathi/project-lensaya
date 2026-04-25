@@ -113,7 +113,6 @@ export const uploadService = {
     const assetPurpose = purposeToAssetPurpose[purpose] || "OTHER";
 
     if (resolvedPhotographerId && tenant && !isAdminTenant(tenant)) {
-      const plan = await planLimitService.getPlanByPhotographerId(resolvedPhotographerId);
       const incomingUploadBytes = toUploadBytes(size);
 
       if (assetPurpose === "PORTFOLIO") {
@@ -122,25 +121,31 @@ export const uploadService = {
             photographerId: resolvedPhotographerId,
           },
         });
-        if (planLimitService.isLimitReached({ used: portfolioPhotoCount, max: plan.maxPortfolioImages })) {
-          await planLimitService.throwLimitReached({
-            metric: "portfolioImages",
-            used: portfolioPhotoCount,
-            plan,
-          });
+        const canUpload = await planLimitService.canUploadPortfolioImage({
+          photographerId: resolvedPhotographerId,
+          used: portfolioPhotoCount,
+        });
+        if (!canUpload.allowed) {
+          throw new ApiError(403, canUpload.message || "Portfolio upload limit reached");
         }
       }
 
-      const storageLimitBytes = toStorageLimitBytes(plan.storageGB);
+      const plan = await planLimitService.getPlanByPhotographerId(resolvedPhotographerId);
+      const entitlements = planLimitService.toEntitlements(plan);
+      const storageLimitBytes = toStorageLimitBytes(entitlements?.limits?.storageGb);
       if (storageLimitBytes >= 0) {
         const usedStorageBytes = await getPhotographerStorageUsageBytes(resolvedPhotographerId);
         const projectedStorageBytes = usedStorageBytes + incomingUploadBytes;
         if (projectedStorageBytes > storageLimitBytes) {
-          await planLimitService.throwLimitReached({
+          const usedStorageGb = Number((projectedStorageBytes / BYTES_PER_GB).toFixed(3));
+          const storageGate = await planLimitService.evaluateLimitGate({
             metric: "storage",
-            used: Number((projectedStorageBytes / BYTES_PER_GB).toFixed(3)),
+            used: usedStorageGb,
             plan,
           });
+          if (!storageGate.allowed) {
+            throw new ApiError(403, storageGate.message || "Storage limit reached");
+          }
         }
       }
     }

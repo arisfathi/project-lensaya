@@ -11,7 +11,7 @@ export function PortfolioFooter({ showLensayaBranding, appHomeUrl, themeColor, s
   return (
     <>
       {showLensayaBranding ? (
-        <section className="py-12 sm:py-16 bg-[var(--theme-section-bg)] border-t border-[var(--theme-color-border)]">
+        <section className="py-12 sm:py-16 bg-white border-t border-[var(--theme-color-border)]">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center">
             <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-3">Want a portfolio like this?</h2>
             <p className="text-slate-600 mb-6">Create yours in minutes with Lensaya.</p>

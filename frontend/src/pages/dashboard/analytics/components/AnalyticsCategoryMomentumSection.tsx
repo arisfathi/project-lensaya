@@ -1,6 +1,8 @@
 import { ArrowRight, Lock } from "lucide-react";
 import { Link } from "react-router-dom";
 import { BarChart, Bar, Tooltip, ResponsiveContainer, XAxis, YAxis } from "recharts";
+import { usePricingContent } from "../../../../hooks/usePricingContent";
+import { resolvePricingUpgradeCopy } from "../../../../lib/pricingContent";
 import { CHART_TOOLTIP_STYLE, PREVIEW_BAR_WIDTHS } from "../constants";
 import type { PreviewCategoryItem } from "../types";
 
@@ -19,6 +21,9 @@ type AnalyticsCategoryMomentumSectionProps = {
 };
 
 export function AnalyticsCategoryMomentumSection({ data, actions }: AnalyticsCategoryMomentumSectionProps) {
+  const pricingContent = usePricingContent();
+  const upgradeCopy = resolvePricingUpgradeCopy(pricingContent, data.upgradeTarget);
+
   return (
     <div className="rounded-[22px] border border-slate-200/80 bg-white/95 p-4 shadow-sm md:p-6">
       <div className="flex items-start justify-between gap-3">
@@ -27,7 +32,7 @@ export function AnalyticsCategoryMomentumSection({ data, actions }: AnalyticsCat
           <p className="mt-1 text-xs leading-5 text-slate-500 md:text-sm">
             {data.hasFullAccess
               ? "See which services or categories are attracting the most attention right now."
-              : `${data.upgradeTarget} reveals the exact rankings and view counts behind your strongest categories.`}
+              : upgradeCopy.description}
           </p>
         </div>
         {!data.hasFullAccess ? (
@@ -77,14 +82,14 @@ export function AnalyticsCategoryMomentumSection({ data, actions }: AnalyticsCat
                   </span>
                 </div>
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
-                  <div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-blue-500" style={{ width: PREVIEW_BAR_WIDTHS[index] || "46%" }} />
+                  <div className="h-full rounded-full bg-linear-to-r from-cyan-500 to-blue-500" style={{ width: PREVIEW_BAR_WIDTHS[index] || "46%" }} />
                 </div>
               </div>
             ))}
           </div>
           <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-950 px-3.5 py-3.5 text-white md:mt-6 md:px-4 md:py-4">
             <p className="text-sm font-semibold">{data.totalCategoriesTracked > data.previewCategories.length ? `${data.totalCategoriesTracked - data.previewCategories.length} more tracked categories are hidden` : `Exact ranking depth is locked on ${data.upgradeTarget}`}</p>
-            <p className="mt-1 text-xs text-slate-300 md:text-sm">Use {data.upgradeTarget} to see every category, exact counts, and where your portfolio momentum is strongest.</p>
+            <p className="mt-1 text-xs text-slate-300 md:text-sm">{upgradeCopy.description}</p>
             <Link
               to="/dashboard/pricing"
               onClick={() => {
@@ -102,7 +107,7 @@ export function AnalyticsCategoryMomentumSection({ data, actions }: AnalyticsCat
           <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm leading-6 text-slate-600 md:mt-6 md:p-6">
             Your leading categories will appear once visitors start exploring your portfolio.
             <br />
-            {data.upgradeTarget} will reveal exact counts and full ranking depth when that happens.
+            {upgradeCopy.description}
           </div>
           <Link
             to="/dashboard/pricing"

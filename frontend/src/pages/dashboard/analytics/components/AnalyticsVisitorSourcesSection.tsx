@@ -1,6 +1,8 @@
 import { ArrowRight, Lock } from "lucide-react";
 import { Link } from "react-router-dom";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
+import { usePricingContent } from "../../../../hooks/usePricingContent";
+import { resolvePricingUpgradeCopy } from "../../../../lib/pricingContent";
 import { CHART_TOOLTIP_STYLE } from "../constants";
 import type { SourcePreviewRow } from "../types";
 import { formatNumber } from "../utils";
@@ -21,6 +23,9 @@ type AnalyticsVisitorSourcesSectionProps = {
 };
 
 export function AnalyticsVisitorSourcesSection({ data, actions }: AnalyticsVisitorSourcesSectionProps) {
+  const pricingContent = usePricingContent();
+  const upgradeCopy = resolvePricingUpgradeCopy(pricingContent, data.upgradeTarget);
+
   return (
     <div className="rounded-[22px] border border-slate-200/80 bg-white/95 p-4 shadow-sm md:p-6">
       <div className="flex items-start justify-between gap-3">
@@ -29,7 +34,7 @@ export function AnalyticsVisitorSourcesSection({ data, actions }: AnalyticsVisit
           <p className="mt-1 text-xs leading-5 text-slate-500 md:text-sm">
             {data.hasFullAccess
               ? "See exactly where visitors are coming from so you know which channels deserve more energy."
-              : `Free shows the strongest source signal. ${data.upgradeTarget} unlocks the full traffic mix.`}
+              : upgradeCopy.description}
           </p>
         </div>
         {!data.hasFullAccess ? (
@@ -74,14 +79,14 @@ export function AnalyticsVisitorSourcesSection({ data, actions }: AnalyticsVisit
         )
       ) : (
         <>
-          <div className="mt-4 rounded-[20px] border border-cyan-100 bg-[linear-gradient(145deg,_#ecfeff_0%,_#ffffff_58%,_#f8fafc_100%)] p-4 md:mt-6 md:p-5">
+          <div className="mt-4 rounded-[20px] border border-cyan-100 bg-[linear-gradient(145deg,#ecfeff_0%,#ffffff_58%,#f8fafc_100%)] p-4 md:mt-6 md:p-5">
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-700">Top Source So Far</p>
             <p className="mt-2 text-2xl font-bold tracking-tight text-slate-950 md:mt-3 md:text-3xl">{data.topSource || "Waiting for your first traffic source"}</p>
             <p className="mt-2 text-xs leading-5 text-slate-600 md:mt-3 md:text-sm md:leading-6">
               {data.topSource
                 ? data.sourceCount > 1
-                  ? `${data.sourceCount} tracked channels have already sent visitors. Unlock ${data.upgradeTarget} to see the full percentage split and how each one performs over time.`
-                  : `This is your strongest traffic source so far. Unlock ${data.upgradeTarget} to compare it against the rest as more channels appear.`
+                  ? upgradeCopy.description
+                  : upgradeCopy.title
                 : `As soon as visitors arrive from social, search, or referral traffic, you will see the first signal here.`}
             </p>
           </div>
@@ -97,7 +102,7 @@ export function AnalyticsVisitorSourcesSection({ data, actions }: AnalyticsVisit
                 </div>
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
                   <div
-                    className={`h-full rounded-full ${item.visible ? "bg-gradient-to-r from-cyan-500 to-blue-500" : "bg-gradient-to-r from-slate-300 via-slate-200 to-slate-100"}`}
+                    className={`h-full rounded-full ${item.visible ? "bg-linear-to-r from-cyan-500 to-blue-500" : "bg-linear-to-r from-slate-300 via-slate-200 to-slate-100"}`}
                     style={{ width: item.width }}
                   />
                 </div>

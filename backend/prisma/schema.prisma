@@ -13,6 +13,7 @@ model User {
   emailVerifiedAt     DateTime?
   passwordHash        String?              @db.VarChar(255)
   googleId            String?              @unique @db.VarChar(191)
+  appleId             String?              @unique @db.VarChar(191)
   fullName            String               @db.VarChar(191)
   username            String?              @unique @db.VarChar(64)
   role                UserRole             @default(PHOTOGRAPHER)
@@ -257,6 +258,61 @@ model Subscription {
   @@index([userId, status, billingInterval])
   @@index([createdAt])
 }
+
+model SubscriptionPlan {
+  id                            String             @id @default(uuid()) @db.Uuid
+  name                          String             @unique @db.VarChar(64)
+  displayName                   String             @default("") @db.VarChar(128)
+  tagline                       String?            @db.VarChar(191)
+  subtitle                      String?
+  badgeText                     String?            @db.VarChar(80)
+  ctaText                       String?            @db.VarChar(80)
+  monthlyPriceDisplay           String?            @db.VarChar(80)
+  yearlyPriceDisplay            String?            @db.VarChar(80)
+  sortOrder                     Int                @default(0)
+  isVisible                     Boolean            @default(true)
+  isActive                      Boolean            @default(true)
+  isMostPopular                 Boolean            @default(false)
+  maxServices                   Int
+  maxPortfolioImages            Int
+  maxPackages                   Int
+  maxPackagesPerService         Int                @default(-1)
+  maxPackageFeatures            Int                @default(5)
+  maxPackageFeaturesPerPackage  Int                @default(-1)
+  storageGB                     Int
+  storageGb                     Int                @default(-1)
+  teamSeats                     Int                @default(1)
+  leadHistoryDays               Int                @default(30)
+  leadVisibilityLimit           Int                @default(60)
+  leadTemplatesCount            Int                @default(1)
+  analyticsTools                Boolean            @default(false)
+  analyticsEnabled              Boolean            @default(false)
+  customDomain                  Boolean            @default(false)
+  customDomainEnabled           Boolean            @default(false)
+  hideBrandingEnabled           Boolean            @default(false)
+  leadFiltersEnabled            Boolean            @default(false)
+  leadExportEnabled             Boolean            @default(false)
+  leadRemindersEnabled          Boolean            @default(false)
+  leadAdvancedAnalyticsEnabled  Boolean            @default(false)
+  teamSectionTools              Boolean            @default(false)
+  teamToolsEnabled              Boolean            @default(false)
+  analyticsMode                 AnalyticsMode      @default(BASIC)
+  leadAnalyticsMode             LeadAnalyticsMode  @default(BASIC)
+  supportTier                   SupportTier        @default(STANDARD)
+  brandingMode                  BrandingMode       @default(FORCED_LENSAYA)
+  leadChannels                  Json?
+  price                         Decimal            @default(0) @db.Decimal(12, 2)
+  yearlyPrice                   Decimal            @default(0) @db.Decimal(12, 2)
+  currency                      String             @default("USD") @db.VarChar(3)
+  trialDays                     Int                @default(0)
+  referralReward                Decimal            @default(0) @db.Decimal(12, 2)
+  storageCostPerGB              Decimal            @default(0) @db.Decimal(12, 2)
+  createdAt                     DateTime           @default(now())
+  updatedAt                     DateTime           @updatedAt
+
+  @@index([isVisible, isActive, sortOrder])
+}
+
 model CustomDomain {
   id             String                @id @default(uuid()) @db.Uuid
   photographerId String                @unique @db.Uuid
@@ -592,6 +648,28 @@ enum PlanTier {
   FREE
   PRO
   STUDIO
+}
+
+enum AnalyticsMode {
+  NONE
+  BASIC
+  ADVANCED
+}
+
+enum LeadAnalyticsMode {
+  NONE
+  BASIC
+  ADVANCED
+}
+
+enum SupportTier {
+  STANDARD
+  PRIORITY
+}
+
+enum BrandingMode {
+  FORCED_LENSAYA
+  REMOVABLE
 }
 
 enum BillingInterval {

@@ -9,6 +9,7 @@ import {
   signupSchema,
   loginSchema,
   googleSchema,
+  appleSchema,
   forgotSchema,
   resetSchema,
   refreshSchema,
@@ -21,6 +22,7 @@ const router = Router();
 router.post("/auth/signup", authLimiter, validate(signupSchema), authController.signup);
 router.post("/auth/login", authLimiter, validate(loginSchema), authController.login);
 router.post("/auth/google", authLimiter, validate(googleSchema), authController.googleAuth);
+router.post("/auth/apple", authLimiter, validate(appleSchema), authController.appleAuth);
 router.post("/auth/forgot-password", validate(forgotSchema), authController.forgotPassword);
 router.post("/auth/reset-password", validate(resetSchema), authController.resetPassword);
 router.post("/auth/verify-email", authLimiter, validate(verifyEmailSchema), authController.verifyEmail);

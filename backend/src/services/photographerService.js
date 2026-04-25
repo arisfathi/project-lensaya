@@ -162,18 +162,15 @@ export const photographerService = {
     const photographerId = requireTenantPhotographerId(tenant);
 
     if (!isAdminTenant(tenant)) {
-      const [plan, portfolioImageCount] = await Promise.all([
-        planLimitService.getPlanByPhotographerId(photographerId),
-        prisma.portfolioItem.count({
-          where: { photographerId },
-        }),
-      ]);
-      if (planLimitService.isLimitReached({ used: portfolioImageCount, max: plan.maxPortfolioImages })) {
-        await planLimitService.throwLimitReached({
-          metric: "portfolioImages",
-          used: portfolioImageCount,
-          plan,
-        });
+      const portfolioImageCount = await prisma.portfolioItem.count({
+        where: { photographerId },
+      });
+      const canUpload = await planLimitService.canUploadPortfolioImage({
+        photographerId,
+        used: portfolioImageCount,
+      });
+      if (!canUpload.allowed) {
+        throw new ApiError(403, canUpload.message || "Portfolio limit reached");
       }
     }
 

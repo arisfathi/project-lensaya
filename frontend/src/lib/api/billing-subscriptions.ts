@@ -145,7 +145,6 @@ export const billingApi = {
   changePlan: (payload: {
     targetPlanId: "FREE" | "PRO" | "STUDIO";
     billingCycle?: "monthly" | "yearly";
-    paymentProvider?: "chip" | "stripe";
     successUrl?: string;
     cancelUrl?: string;
     referralCode?: string;

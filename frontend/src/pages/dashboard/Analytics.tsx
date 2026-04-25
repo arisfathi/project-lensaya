@@ -4,6 +4,7 @@ import { DashboardLayout } from "../../components/dashboard/DashboardLayout";
 import { LoadingCard } from "../../components/ui/LoadingSpinner";
 import { analyticsApi, getApiErrorMessage, isApiAccessError } from "../../lib/api";
 import { useToast } from "../../contexts/ToastContext";
+import { useEntitlements } from "../../hooks/useEntitlements";
 import { PREVIEW_BAR_WIDTHS, SOURCE_COLORS } from "./analytics/constants";
 import { AnalyticsCategoryMomentumSection } from "./analytics/components/AnalyticsCategoryMomentumSection";
 import { AnalyticsFunnelPerformanceSection } from "./analytics/components/AnalyticsFunnelPerformanceSection";
@@ -30,6 +31,7 @@ export default function Analytics() {
   const [loading, setLoading] = useState(true);
 
   const { error, success } = useToast();
+  const { entitlementUpgradeTarget } = useEntitlements();
 
   useEffect(() => {
     let mounted = true;
@@ -138,7 +140,7 @@ export default function Analytics() {
   }
 
   const hasFullAccess = Boolean(overview.access?.hasFullAccess);
-  const upgradeTarget = overview.access?.upgradeTarget || "PRO";
+  const upgradeTarget = overview.access?.upgradeTarget || entitlementUpgradeTarget;
   const trafficWindowDays = Number(overview.preview?.trafficWindowDays || 7);
   const metricsWindowDays = Number(overview.preview?.metricsWindowDays || 30);
   const contactActions = Number(overview.preview?.contactActions || 0);

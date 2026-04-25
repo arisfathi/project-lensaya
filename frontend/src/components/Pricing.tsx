@@ -2,12 +2,27 @@ import { useEffect, useMemo, useState } from 'react';
 import { Check, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { publicApi } from '../lib/api';
+import { formatCurrencyAmount } from '../lib/currency';
+import { buildPlanHighlightsFromLimits } from '../lib/pricingLimits';
+import { usePricingContent } from '../hooks/usePricingContent';
+import { resolvePlanCopy, resolvePricingSectionCopy } from '../lib/pricingContent';
 
 type BillingPlanId = 'FREE' | 'PRO' | 'STUDIO';
 
 type BillingPlan = {
   id: BillingPlanId;
   name: string;
+  displayName?: string;
+  tagline?: string | null;
+  subtitle?: string | null;
+  badgeText?: string | null;
+  ctaText?: string | null;
+  monthlyPriceDisplay?: string | null;
+  yearlyPriceDisplay?: string | null;
+  sortOrder?: number;
+  isVisible?: boolean;
+  isActive?: boolean;
+  isMostPopular?: boolean;
   price: number;
   monthlyPrice?: number;
   pricing?: {
@@ -22,6 +37,7 @@ type BillingPlan = {
 type PricingCard = {
   id: string;
   name: string;
+  tagline: string;
   description: string;
   priceLabel: string;
   period: string;
@@ -29,74 +45,16 @@ type PricingCard = {
   highlighted: boolean;
   cta: string;
   note: string;
+  badgeText?: string | null;
 };
 
 const planOrder: BillingPlanId[] = ['FREE', 'PRO', 'STUDIO'];
-const planCopy: Record<BillingPlanId, { description: string; cta: string }> = {
-  FREE: {
-    description: 'Perfect for getting started',
-    cta: 'Get Started Free',
-  },
-  PRO: {
-    description: 'For professional photographers',
-    cta: 'Start Pro',
-  },
-  STUDIO: {
-    description: 'For high-volume studios',
-    cta: 'See Studio',
-  },
-};
-
-const resolveLimitValue = (plan: BillingPlan, keys: string[]) => {
-  for (const key of keys) {
-    if (key in plan.limits) {
-      return plan.limits[key];
-    }
-  }
-  return null;
-};
-
-const formatLimitValue = (value: number | boolean | null, fallback: string) => {
-  if (value === null || value === undefined) return fallback;
-  if (typeof value === 'boolean') return value ? 'Included' : 'Not included';
-  if (value < 0) return 'Unlimited';
-  return `${value}`;
-};
-
-const formatPrice = (price: number, currency = 'USD') => {
-  try {
-    const hasDecimals = !Number.isInteger(price);
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: hasDecimals ? 2 : 0,
-      maximumFractionDigits: 2,
-    }).format(price);
-  } catch {
-    return '$' + price;
-  }
-};
-
-const buildHighlights = (plan: BillingPlan) => [
-  `${formatLimitValue(resolveLimitValue(plan, ['portfolioPhotos', 'portfolioImages']), 'Portfolio')} portfolio images`,
-  `${formatLimitValue(resolveLimitValue(plan, ['services']), 'Core')} services`,
-  `${formatLimitValue(resolveLimitValue(plan, ['packagesPerService', 'packages']), 'Flexible')} packages per service`,
-  plan.id === 'FREE'
-    ? 'Lensaya subdomain included'
-    : formatLimitValue(resolveLimitValue(plan, ['customDomain']), 'Included') === 'Included'
-      ? 'Custom domain included'
-      : 'Lensaya subdomain included',
-  plan.id === 'FREE'
-    ? 'Essential analytics'
-    : formatLimitValue(resolveLimitValue(plan, ['analyticsTools']), 'Included') === 'Included'
-      ? 'Advanced analytics'
-      : 'Essential analytics',
-];
 
 export function Pricing() {
   const [plans, setPlans] = useState<BillingPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const pricingContent = usePricingContent();
 
   useEffect(() => {
     let mounted = true;
@@ -109,7 +67,12 @@ export function Pricing() {
 
         const ordered = result.plans
           .slice()
-          .sort((a, b) => planOrder.indexOf(a.id as BillingPlanId) - planOrder.indexOf(b.id as BillingPlanId));
+          .filter((plan) => plan.isVisible !== false && plan.isActive !== false)
+          .sort((a, b) => {
+            const aSort = Number(a.sortOrder ?? planOrder.indexOf(a.id as BillingPlanId));
+            const bSort = Number(b.sortOrder ?? planOrder.indexOf(b.id as BillingPlanId));
+            return aSort - bSort;
+          });
 
         setPlans(ordered as BillingPlan[]);
         setErrorMessage(null);
@@ -136,6 +99,7 @@ export function Pricing() {
       return Array.from({ length: 3 }, (_, index) => ({
         id: `loading-${index}`,
         name: 'Loading',
+        tagline: 'Loading...',
         description: 'Loading pricing details...',
         priceLabel: '...',
         period: 'per month',
@@ -148,36 +112,39 @@ export function Pricing() {
 
     return plans.map((plan) => {
       const monthlyPrice = Number(plan.pricing?.monthly ?? plan.monthlyPrice ?? plan.price ?? 0);
+      const copy = resolvePlanCopy(plan);
 
       return {
         id: plan.id,
-        name: plan.name,
-        description: planCopy[plan.id].description,
-        priceLabel: formatPrice(monthlyPrice, plan.currency),
+        name: plan.displayName || plan.name,
+        tagline: copy.tagline,
+        description: copy.description,
+        priceLabel: formatCurrencyAmount(monthlyPrice, plan.currency),
         period: plan.id === 'FREE' ? 'forever' : 'per month',
-        features: buildHighlights(plan),
-        highlighted: plan.id === 'PRO',
-        cta: planCopy[plan.id].cta,
+        features: buildPlanHighlightsFromLimits(plan),
+        highlighted: Boolean(plan.isMostPopular ?? plan.id === 'PRO'),
+        cta: copy.cta,
         note:
           plan.id === 'FREE'
             ? 'No credit card required'
             : plan.trialDays && plan.trialDays > 0
               ? `${plan.trialDays}-day trial available`
               : 'Upgrade when you are ready',
+        badgeText: copy.badge,
       };
     });
   }, [loading, plans]);
+
+  const sectionCopy = useMemo(() => resolvePricingSectionCopy(pricingContent), [pricingContent]);
 
   return (
     <section id="pricing" className="scroll-mt-24 bg-cyan-50 py-16 sm:py-24">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-12 text-center sm:mb-16">
           <p className="mb-3 text-sm font-semibold uppercase tracking-wide text-cyan-500">Pricing</p>
-          <h2 className="mb-6 text-3xl font-bold text-slate-900 sm:text-4xl lg:text-5xl">
-            Plans for every photographer
-          </h2>
+          <h2 className="mb-6 text-3xl font-bold text-slate-900 sm:text-4xl lg:text-5xl">{sectionCopy.title}</h2>
           <p className="mx-auto max-w-3xl text-lg text-slate-600 sm:text-xl">
-            Start free and upgrade as you grow. All plans include the core Lensaya portfolio experience.
+            {sectionCopy.subtitle}
           </p>
         </div>
 
@@ -191,17 +158,22 @@ export function Pricing() {
                   : 'border-gray-200 bg-white hover:border-cyan-200 hover:shadow-lg'
               }`}
             >
-              {plan.highlighted ? (
-                <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2">
-                  <div className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-cyan-500 to-cyan-600 px-4 py-1.5 text-sm font-semibold text-white shadow-lg">
-                    <Zap className="h-4 w-4" />
-                    Most Popular
-                  </div>
+              <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2">
+                <div
+                  className={`flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-semibold shadow-sm ${
+                    plan.highlighted
+                      ? 'bg-linear-to-r from-cyan-500 to-cyan-600 text-white shadow-lg'
+                      : 'border border-cyan-200 bg-cyan-50 text-cyan-700'
+                  }`}
+                >
+                  {plan.highlighted ? <Zap className="h-4 w-4" /> : null}
+                  {plan.badgeText}
                 </div>
-              ) : null}
+              </div>
 
               <div className="mb-6">
                 <h3 className="mb-2 text-2xl font-bold text-slate-900">{plan.name}</h3>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-cyan-700">{plan.tagline}</p>
                 <p className="mb-4 text-sm text-slate-600">{plan.description}</p>
                 <div className="flex items-baseline gap-2">
                   <span className="text-4xl font-bold text-slate-900 sm:text-5xl">{plan.priceLabel}</span>
@@ -224,7 +196,7 @@ export function Pricing() {
               <div className="space-y-3 border-t border-gray-200 pt-6">
                 {plan.features.map((feature) => (
                   <div key={feature} className="flex items-start gap-3">
-                    <Check className="mt-0.5 h-5 w-5 flex-shrink-0 text-cyan-500" />
+                    <Check className="mt-0.5 h-5 w-5 shrink-0 text-cyan-500" />
                     <span className="text-sm text-slate-700">{feature}</span>
                   </div>
                 ))}
@@ -246,6 +218,8 @@ export function Pricing() {
     </section>
   );
 }
+
+export default Pricing;
 
 
 

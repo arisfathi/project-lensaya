@@ -67,7 +67,7 @@ const buildBaseState = (
 
   return {
     deleted: seed?.deleted ?? false,
-    eligible: typeof seed?.eligible === "boolean" ? seed.eligible : normalizedPlan !== "FREE",
+    eligible: typeof seed?.eligible === "boolean" ? seed.eligible : false,
     currentPlan: normalizedPlan,
     domain,
     status: seed?.status ?? null,
@@ -114,7 +114,7 @@ const statusConfig: Record<DisplayStatus, { label: string; badgeClass: string; d
   locked: {
     label: "Upgrade required",
     badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
-    description: "Custom domains are available on Pro and Studio plans.",
+    description: "Custom domains are not enabled on your current plan.",
   },
   empty: {
     label: "Not connected",

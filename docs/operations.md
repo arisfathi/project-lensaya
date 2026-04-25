@@ -26,7 +26,7 @@ Background Workers (separate processes)
     └─ Billing Maintenance Worker (subscription reconciliation)
 
 External Integrations
-    ├─ CHIP/Stripe (webhooks for payments)
+    ├─ Stripe (webhooks for payments)
     ├─ Resend (email delivery)
     ├─ Google OAuth (authentication)
     └─ Cloudflare R2 (image storage + CDN)
@@ -208,18 +208,18 @@ WHERE NOT blocked_locks.granted;
 
 ## Webhooks & Payment Provider Integration
 
-### CHIP Payment Webhooks
+### Stripe Webhooks
 
 **Endpoint**: `POST /api/v1/billing/webhook`  
 **Alternative**: `POST /api/v1/webhooks/payments`
 
 **Signature verification**:
-- Header: `X-Chip-Signature`
-- Algorithm: HMAC-SHA256
-- Secret: `env.chip.webhookSecret`
+- Header: `stripe-signature`
+- Secret: `STRIPE_WEBHOOK_SECRET`
+- Raw body is required (see `backend/src/controllers/billingController.js`)
 
 **Key webhook events**:
-- `checkout.session.expired` → Subscription expires
+- `checkout.session.completed` → Subscription starts/renews
 - `invoice.paid` → Payment successful, marks `ACTIVE`
 - `invoice.payment_failed` → Marks `PAST_DUE`, retries
 
@@ -235,15 +235,7 @@ curl -X POST http://localhost:4000/api/v1/billing/mock/checkout/$SESSION_ID/comp
   -d '{"planName":"PRO","planInterval":"month"}'
 ```
 
-### Stripe Integration (Experimental)
-
-**Endpoint**: Same as CHIP (`/api/v1/billing/webhook`)  
-**Signature verification**:
-- Header: `stripe-signature`
-- Algorithm: Timestamp + HMAC-SHA256
-- Secret: `env.stripe.webhookSecret`
-
-**Re-triggering webhooks**: Use Stripe Dashboard → Developers → Events → Resend
+**Re-triggering webhooks**: Use Stripe Dashboard → Developers → Events → Resend (or Stripe CLI `listen`)
 
 ## Analytics & Metrics
 
@@ -346,7 +338,7 @@ Quota is enforced at upload time (presign endpoint checks storage.used + newFile
 
 ### Subscription Lifecycle
 
-1. **Payment initiated**: User checks out → CHIP/Stripe creates session
+1. **Payment initiated**: User checks out → Stripe creates checkout session
 2. **Payment captured**: Webhook → creates Transaction + Subscription (INCOMPLETE)
 3. **Payment confirmed**: Webhook → Subscription → TRIALING or ACTIVE (based on plan)
 4. **Active period**: User can use features gated by plan
@@ -446,7 +438,7 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" \
 1. Check worker health: `curl /api/v1/admin/system/worker-health`
 2. If `billing-maintenance` is offline: restart it
 3. Check Redis connectivity: `redis-cli PING`
-4. Check CHIP/Stripe status page for outages
+4. Check Stripe status page for outages
 5. Check database logs for errors (Sentry)
 6. If transient: wait for automatic retry (exponential backoff)
 7. If stuck: manually trigger billing maintenance (run `npm run worker:billing-maintenance` once)
@@ -472,7 +464,7 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" \
 2. Test with `nslookup custom-domain.example.com`
 3. Check CUSTOM_DOMAIN_VERIFICATION_MODE: should be `dns` in production
 4. Check webhook can reach app: `curl https://custom-domain.example.com/health`
-5. If CHIP can't reach app via custom domain, billing will fail
+5. If Stripe webhooks can't reach app via custom domain, billing will fail
 
 ### Scenario: High Database Load / Slow Queries
 
@@ -544,7 +536,7 @@ BILLING_MAINTENANCE_INTERVAL_MS=300000  # Run more frequently
 ### Ransomware / Malicious Access
 
 1. Shut down all API servers immediately
-2. Revoke all API keys (CHIP, Stripe, R2, Resend, Google OAuth)
+2. Revoke all API keys (Stripe, R2, Resend, Google OAuth)
 3. Restore database from backup taken before compromise
 4. Rotate JWT_SECRET
 5. Audit all admin logs (AdminLog table) for suspicious activity
@@ -556,7 +548,7 @@ Before deploying to production:
 
 - [ ] All tests passing (`npm test`)
 - [ ] Migrations generated: `npm run prisma:migrate`
-- [ ] Env vars configured: DATABASE_URL, JWT_SECRET, CHIP_*, R2_*, etc.
+- [ ] Env vars configured: DATABASE_URL, JWT_SECRET, STRIPE_*, R2_*, etc.
 - [ ] CORS origins configured: `CORS_ORIGINS` includes production domain
 - [ ] Custom domain verification mode set: `CUSTOM_DOMAIN_VERIFICATION_MODE=dns`
 - [ ] Cookie security enabled: `AUTH_COOKIE_SECURE=true`, `AUTH_COOKIE_SAMESITE=none`

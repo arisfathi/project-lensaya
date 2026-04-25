@@ -117,7 +117,7 @@ Source hints:
 ## Billing Lifecycle Rules
 
 - Supported subscription statuses include TRIALING, ACTIVE, PAST_DUE, CANCELED, EXPIRED, INCOMPLETE.
-- Webhooks support CHIP and Stripe payload patterns with signature verification.
+- Webhooks support Stripe payload patterns with signature verification.
 - Duplicate/stale webhook handling is designed to be idempotent and status-safe.
 - Plan changes classify as upgrade/downgrade/renew based on rank and cycle.
 

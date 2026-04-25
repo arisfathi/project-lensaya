@@ -1,6 +1,8 @@
 import { ArrowRight, Lock } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Line, LineChart, ResponsiveContainer } from "recharts";
+import { usePricingContent } from "../../../../hooks/usePricingContent";
+import { resolvePricingUpgradeCopy } from "../../../../lib/pricingContent";
 import { formatNumber, formatPercent } from "../utils";
 
 type ComparisonItem = {
@@ -88,6 +90,9 @@ const ComparisonCard = ({ label, value }: { label: string; value: ComparisonItem
 );
 
 export function AnalyticsRangeAndAttributionSection({ data, actions }: AnalyticsRangeAndAttributionSectionProps) {
+  const pricingContent = usePricingContent();
+  const upgradeCopy = resolvePricingUpgradeCopy(pricingContent, data.upgradeTarget);
+
   return (
     <div className="mb-6 grid gap-4 md:mb-8 md:gap-6 xl:grid-cols-2">
       <section className="rounded-[22px] border border-slate-200/80 bg-white/95 p-4 shadow-sm md:p-6">
@@ -146,9 +151,7 @@ export function AnalyticsRangeAndAttributionSection({ data, actions }: Analytics
         ) : (
           <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 md:mt-6">
             <p className="text-sm font-semibold text-slate-900">Comparison trends are locked on Free.</p>
-            <p className="mt-1 text-xs text-slate-600 md:text-sm">
-              Upgrade to {data.upgradeTarget} to compare growth and decline across your chosen windows.
-            </p>
+            <p className="mt-1 text-xs text-slate-600 md:text-sm">{upgradeCopy.description}</p>
             <Link
               to="/dashboard/pricing"
               onClick={() => {
@@ -226,9 +229,7 @@ export function AnalyticsRangeAndAttributionSection({ data, actions }: Analytics
         ) : (
           <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 md:mt-6">
             <p className="text-sm font-semibold text-slate-900">Source-to-funnel attribution is locked on Free.</p>
-            <p className="mt-1 text-xs text-slate-600 md:text-sm">
-              Upgrade to {data.upgradeTarget} to find which channels drive qualified inquiries, not just traffic.
-            </p>
+            <p className="mt-1 text-xs text-slate-600 md:text-sm">{upgradeCopy.description}</p>
             <Link
               to="/dashboard/pricing"
               onClick={() => {

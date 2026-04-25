@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { PUBLIC_DIRECTORY_ENABLED } from '../lib/marketingFlags';
 import { getRoleHomePath } from '../lib/roles';
 import { BrandWordmark } from './BrandWordmark';
 
@@ -10,8 +11,8 @@ export function Header() {
     { label: 'Features', to: '/#features' },
     { label: 'Examples', to: '/#examples' },
     { label: 'Pricing', to: '/#pricing' },
-    { label: 'Directory', to: '/#directory' },
-  ];
+    ...(PUBLIC_DIRECTORY_ENABLED ? [{ label: 'Directory', to: '/#directory' }] : []),
+  ] as const;
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/90 shadow-[0_10px_30px_rgba(15,23,42,0.05)] backdrop-blur-xl">

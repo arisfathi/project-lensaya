@@ -52,6 +52,12 @@ export const authController = {
     return sendSuccess(res, sanitizedAuthPayload(data));
   }),
 
+  appleAuth: asyncHandler(async (req, res) => {
+    const data = await authService.appleAuth(req.body);
+    setSessionCookies(res, data);
+    return sendSuccess(res, sanitizedAuthPayload(data));
+  }),
+
   forgotPassword: asyncHandler(async (req, res) => {
     const data = await authService.forgotPassword(req.body);
     return sendSuccess(res, data);

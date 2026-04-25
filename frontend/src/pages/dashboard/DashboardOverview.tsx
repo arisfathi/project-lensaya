@@ -6,6 +6,8 @@ import { buildPublicStudioHost, toAbsoluteWebsiteUrl } from "../../lib/platform"
 import { buildPortfolioShareMessage } from "../../lib/share";
 import { useToast } from "../../contexts/ToastContext";
 import { useAuth } from "../../contexts/AuthContext";
+import { useEntitlements } from "../../hooks/useEntitlements";
+import { usePricingContent } from "../../hooks/usePricingContent";
 import { PLAN_ORDER, QUICK_ACTIONS, REFERRAL_PROMPT_DISMISS_KEY } from "./dashboard-overview/constants";
 import { OverviewPageHeader } from "./dashboard-overview/components/OverviewPageHeader";
 import { OverviewStatsGrid } from "./dashboard-overview/components/OverviewStatsGrid";
@@ -16,6 +18,7 @@ import { TrafficAndCategorySection } from "./dashboard-overview/components/Traff
 import { WebsiteSection } from "./dashboard-overview/components/WebsiteSection";
 import type { OverviewResponse, PlanCatalogItem, PreviewCategoryItem, UsageCard, WebsiteSummary } from "./dashboard-overview/types";
 import { formatUsageLimit, isUnlimited, normalizePlanId, toUsagePercent } from "./dashboard-overview/utils";
+import { resolveUsagePrompt } from "../../lib/pricingContent";
 
 export default function DashboardOverview() {
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
@@ -33,6 +36,8 @@ export default function DashboardOverview() {
 
   const { success, error } = useToast();
   const { user } = useAuth();
+  const { entitlementUpgradeTarget } = useEntitlements();
+  const pricingContent = usePricingContent();
   const username = user?.username || "";
   const websiteUrl = website?.websiteUrl || buildPublicStudioHost(username);
   const websiteLink = toAbsoluteWebsiteUrl(websiteUrl);
@@ -182,7 +187,7 @@ export default function DashboardOverview() {
   };
 
   const hasFullAnalyticsAccess = Boolean(overview?.analyticsAccess?.hasFullAccess);
-  const analyticsUpgradeTarget = overview?.analyticsAccess?.upgradeTarget || "PRO";
+  const analyticsUpgradeTarget = overview?.analyticsAccess?.upgradeTarget || entitlementUpgradeTarget;
   const previewCategories = (overview?.analyticsPreview?.topCategories || []) as PreviewCategoryItem[];
   const totalCategoriesTracked = Number(overview?.analyticsPreview?.totalCategoriesTracked || previewCategories.length);
   const hasCategoryData = categoryData.some((category) => category.value > 0);
@@ -250,66 +255,137 @@ export default function DashboardOverview() {
       return null;
     };
 
+    const toPlanBenefitRows = (targetPlanId: string, metricLabel: string, nextLimitLabel: string) => {
+      const currentPlan = planById.get(currentPlanId);
+      const targetPlan = planById.get(normalizePlanId(targetPlanId));
+      if (!targetPlan) return [];
+
+      const benefitRows: string[] = [`${metricLabel}: ${nextLimitLabel}`];
+      const featureDiffs: Array<{ key: string; label: string }> = [
+        { key: "analyticsTools", label: "Insights dashboard" },
+        { key: "leadFiltersEnabled", label: "Inquiry filters" },
+        { key: "leadRemindersEnabled", label: "Follow-up reminders" },
+        { key: "teamSectionTools", label: "Team collaboration" },
+        { key: "hideBrandingEnabled", label: "Remove Lensaya branding" },
+      ];
+
+      for (const feature of featureDiffs) {
+        const currentValue = Boolean(currentPlan?.limits?.[feature.key] ?? currentPlan?.features?.[feature.key]);
+        const nextValue = Boolean(targetPlan?.limits?.[feature.key] ?? targetPlan?.features?.[feature.key]);
+        if (!currentValue && nextValue) {
+          benefitRows.push(`${feature.label}: Included`);
+        }
+      }
+
+      return benefitRows;
+    };
+
     const packagePerServiceUsage = usage.packagesPerService || usage.packages;
     const metrics = [
       {
         id: "photos",
-        label: "Portfolio photos",
+        label: "Portfolio capacity",
         used: Number(usage.portfolioImages?.used || 0),
         limit: Number(usage.portfolioImages?.limit || 0),
+        unit: "images",
         planLimitKeys: ["portfolioPhotos", "portfolioImages"],
-        suggestionNoun: "photos",
+        suggestionNoun: "images",
         context: null as string | null,
       },
       {
         id: "services",
-        label: "Services",
+        label: "Service listings",
         used: Number(usage.services?.used || 0),
         limit: Number(usage.services?.limit || 0),
+        unit: "listings",
         planLimitKeys: ["services"],
-        suggestionNoun: "services",
+        suggestionNoun: "service listings",
         context: null as string | null,
       },
       {
         id: "packages-per-service",
-        label: "Packages per service",
+        label: "Package options",
         used: Number(packagePerServiceUsage?.used || 0),
         limit: Number(packagePerServiceUsage?.limit || 0),
+        unit: "options",
         planLimitKeys: ["packagesPerService", "packages"],
-        suggestionNoun: "packages per service",
+        suggestionNoun: "package options",
         context: usage.packagesPerService?.serviceName
           ? `Most loaded service: ${usage.packagesPerService.serviceName}`
           : null,
+      },
+      {
+        id: "storage",
+        label: "Storage",
+        used: Number(usage.storage?.used || 0),
+        limit: Number(usage.storage?.limit || 0),
+        unit: "GB",
+        planLimitKeys: ["storage", "storageGb"],
+        suggestionNoun: "GB",
+        context: null as string | null,
+      },
+      {
+        id: "stored-inquiries",
+        label: "Stored inquiries",
+        used: Number(usage.leads?.used || 0),
+        limit: Number(usage.leads?.limit || 0),
+        unit: "inquiries",
+        planLimitKeys: ["leadVisibilityLimit"],
+        suggestionNoun: "stored inquiries",
+        context: null as string | null,
       },
     ];
 
     return metrics.map((metric) => {
       const percent = toUsagePercent(metric.used, metric.limit);
       const ratio = isUnlimited(metric.limit) || metric.limit <= 0 ? 0 : metric.used / metric.limit;
+      const remaining = isUnlimited(metric.limit) ? null : Math.max(0, Number((metric.limit - metric.used).toFixed(3)));
       const status = isUnlimited(metric.limit)
         ? "unlimited"
         : ratio >= 1
           ? "critical"
-          : ratio >= 0.8
+          : ratio >= 0.9
             ? "warning"
             : "normal";
       const suggestion = findUpgradeTarget(metric.planLimitKeys, metric.limit);
 
+      const nearLimit = !isUnlimited(metric.limit) && (ratio >= 0.7 || remaining === 0);
+      const remainingLabel =
+        remaining === null
+          ? "Unlimited"
+          : metric.unit === "GB"
+            ? `${remaining.toFixed(2)} GB`
+            : `${Math.floor(remaining)} ${metric.suggestionNoun}`;
+
       let suggestionText: string | null = null;
-      if ((status === "critical" || status === "warning") && suggestion) {
-        const nextLimitLabel = formatUsageLimit(suggestion.limit);
-        const prefix = status === "critical" ? "Limit reached." : "You are close to your limit.";
-        suggestionText = `${prefix} Upgrade to ${suggestion.planId} for up to ${nextLimitLabel} ${metric.suggestionNoun}.`;
+      let unlockValueLabel: string | null = null;
+      let comparisonBenefits: string[] = [];
+      if ((status === "critical" || status === "warning" || nearLimit) && suggestion) {
+        const nextLimitLabel = formatUsageLimit(suggestion.limit, metric.unit);
+        suggestionText = resolveUsagePrompt(pricingContent, status === "critical" ? "blocked" : "warning", {
+          plan: suggestion.planId,
+          nextPlan: suggestion.planId,
+          limit: nextLimitLabel,
+          metric: metric.label,
+        });
+        unlockValueLabel = `${metric.label}: ${nextLimitLabel}`;
+        comparisonBenefits = toPlanBenefitRows(suggestion.planId, metric.label, nextLimitLabel);
       }
 
       return {
         ...metric,
+        remaining,
+        remainingLabel,
+        nearLimit,
         percent,
         status,
         suggestionText,
+        upgradeTarget: suggestion?.planId || null,
+        unlockValueLabel,
+        comparisonBenefits,
       };
     });
-  }, [overview, planById]);
+  }, [overview, planById, pricingContent]);
 
   if (loading) {
     return (
@@ -342,7 +418,11 @@ export default function DashboardOverview() {
 
       <OverviewStatsGrid stats={overview?.stats} />
 
-      <PlanUsageSection usageCards={usageCards} />
+      <PlanUsageSection
+        usageCards={usageCards}
+        currentPlan={overview?.plan?.name || user?.plan || "FREE"}
+        photographerId={overview?.photographerId || null}
+      />
 
       <TrafficAndCategorySection
         data={{

@@ -1,6 +1,7 @@
 import { Gift, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../../../contexts/AuthContext";
+import { getReferralRewardMessage } from "../../../../lib/entitlements";
 
 type ReferralPromptCardProps = {
   onDismiss: () => void;
@@ -8,19 +9,6 @@ type ReferralPromptCardProps = {
 
 export function ReferralPromptCard({ onDismiss }: ReferralPromptCardProps) {
   const { user } = useAuth();
-  const currentPlan = user?.plan || "FREE";
-
-  const getRewardMessage = () => {
-    switch (currentPlan) {
-      case "PRO":
-        return "When someone signs up with your link, they'll get a 14-day free Pro trial. You'll instantly get 14 extra days on your Pro plan.";
-      case "STUDIO":
-        return "When someone signs up with your link, they'll get a 14-day free Pro trial. You'll instantly get 14 extra days on your Studio plan.";
-      case "FREE":
-      default:
-        return "When someone signs up with your link, they'll get a 14-day free Pro trial. You'll instantly unlock a 7-day Pro trial.";
-    }
-  };
 
   return (
     <div className="mb-5 rounded-2xl border border-cyan-100 bg-linear-to-br from-white to-cyan-50/60 px-3.5 py-3.5 sm:mb-6 sm:rounded-xl sm:p-5 sm:shadow-sm">
@@ -32,7 +20,7 @@ export function ReferralPromptCard({ onDismiss }: ReferralPromptCardProps) {
           <div className="min-w-0">
             <p className="text-sm font-semibold text-slate-900">Referral rewards are ready</p>
             <p className="mt-1 text-xs leading-5 text-slate-600 sm:text-sm">
-              {getRewardMessage()}
+              {getReferralRewardMessage(user?.plan)}
             </p>
           </div>
         </div>

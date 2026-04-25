@@ -18,7 +18,7 @@ At runtime, behavior changes based on host context and route scope.
 - Database: PostgreSQL via Prisma (with some raw SQL in hotspots)
 - Storage: Cloudflare R2 (S3-compatible)
 - Queues/Workers: BullMQ + Redis with inline fallback when Redis is unavailable
-- Billing: CHIP as default provider, Stripe path also supported
+- Billing: Stripe (Checkout + Customer Portal + webhooks).
 - Monitoring: Sentry hooks + worker health endpoints + structured logging
 
 Source hints:
@@ -140,15 +140,14 @@ Source hints:
 
 ## Billing Architecture
 
-- Billing service is provider-aware and supports CHIP and Stripe normalization paths.
-- Webhook endpoints accept multiple payload shapes and enforce signature verification.
+- Billing uses Stripe Checkout + Customer Portal + Stripe webhooks.
+- Webhook endpoint enforces Stripe signature verification.
 - Subscription lifecycle supports trialing, active, past_due, canceled, expired, incomplete.
 - Plan changes support monthly/yearly cycle metadata and pending changes.
 
 Source hints:
 - backend/src/services/billingService.js
 - backend/src/services/billingProviderService.js
-- backend/src/services/chipService.js
 - backend/src/services/stripeService.js
 - backend/src/controllers/billingController.js
 
@@ -179,5 +178,4 @@ Browser -> Frontend (host-aware routes)
 ## Needs Confirmation
 
 - Expected production process model for running API + all workers (systemd/PM2/container scheduler not documented).
-- Final canonical billing provider choice for production (code supports CHIP and Stripe).
 - Long-term module ownership boundaries in backend/services/admin submodules (current structure is clear, ownership policy is not documented).

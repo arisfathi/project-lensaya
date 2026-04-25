@@ -236,9 +236,8 @@ npx prisma migrate resolve --rolled-back 20260309074718_init_lensaya_schema
 **Cause**: Webhook secret mismatch. The signature verification failed.
 
 **Fix**:
-1. For CHIP: Ensure `CHIP_WEBHOOK_SECRET` matches the secret in CHIP dashboard
-2. For Stripe: Ensure `STRIPE_WEBHOOK_SECRET` matches the secret in Stripe dashboard
-3. In test: Set env var BEFORE importing the webhook handler module (see [chipWebhookSecretOrder.test.js](../backend/tests/chipWebhookSecretOrder.test.js))
+1. Ensure `STRIPE_WEBHOOK_SECRET` matches the secret in Stripe dashboard (or Stripe CLI `listen` output)
+2. Ensure the request includes the `stripe-signature` header and the backend receives the raw body (required for verification)
 
 ### Webhook appears to be processed twice
 
@@ -346,35 +345,37 @@ REDIS_URL=redis://localhost:6379
 
 ## Billing/Payment Issues
 
-### Error: "CHIP_BRAND_ID_PRO not configured"
+### Error: "STRIPE_API_KEY is required in production"
 
 **Symptom**: Checkout fails with 503 Service Unavailable in production.
 
-**Cause**: CHIP brand IDs are required for production billing.
+**Cause**: Stripe is enabled in production, but Stripe credentials are missing.
 
 **Fix** (production only):
-1. Get brand IDs from CHIP dashboard (one per plan tier)
-2. Add to `.env`:
+1. Set Stripe env vars in `.env`:
    ```
-   CHIP_BRAND_ID_FREE=brand-free-123
-   CHIP_BRAND_ID_PRO=brand-pro-456
-   CHIP_BRAND_ID_STUDIO=brand-studio-789
+   BILLING_PROVIDER=stripe
+   STRIPE_API_KEY=replace-with-stripe-api-key
+   STRIPE_WEBHOOK_SECRET=replace-with-stripe-webhook-secret
+   STRIPE_SUCCESS_URL=https://your-domain.com/checkout/success
+   STRIPE_CANCEL_URL=https://your-domain.com/checkout/canceled
    ```
-3. Restart backend
+2. Restart backend
 
 ### Error: "Billing provider is 'mock'"
 
 **Symptom**: Billing endpoints return mock checkout URLs instead of real payment gateway.
 
-**Cause**: `CHIP_API_KEY` is missing or not configured, so mock mode is enabled.
+**Cause**: Stripe is not configured (`STRIPE_API_KEY` missing/placeholder) or `BILLING_PROVIDER=mock` is set.
 
 **Expected behavior** (local dev): This is OK! You can test with mock checkouts at `/dashboard/billing/mock-checkout`.
 
 **To use real billing**:
 ```bash
 # In backend/.env:
-CHIP_API_KEY=your-real-api-key
-BILLING_PROVIDER=chip
+STRIPE_API_KEY=your-real-api-key
+STRIPE_WEBHOOK_SECRET=your-real-webhook-secret
+BILLING_PROVIDER=stripe
 ```
 
 ### Subscription status is "PAST_DUE" but should be active
@@ -492,12 +493,12 @@ PUBLIC_APP_URL=https://example.com
 
 **Symptom**: Checkout returns 503, then works again after rollback.
 
-**Cause**: Custom domain DNS isn't pointing to the right place; CHIP callbacks can't reach your app.
+**Cause**: Custom domain DNS isn't pointing to the right place; Stripe webhooks can't reach your app.
 
 **Fix**:
 1. Verify custom domain DNS records are correct
 2. Test: `curl https://your-custom-domain.com/health`
-3. Ensure CHIP can reach your `/api/v1/billing/webhook` endpoint
+3. Ensure Stripe can reach your `/api/v1/billing/webhook` endpoint
 
 ### Workers don't process jobs in production
 

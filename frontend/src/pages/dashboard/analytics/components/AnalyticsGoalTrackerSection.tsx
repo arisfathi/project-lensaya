@@ -1,6 +1,8 @@
 import { ArrowRight, Lock, Target } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { usePricingContent } from "../../../../hooks/usePricingContent";
+import { resolvePricingUpgradeCopy } from "../../../../lib/pricingContent";
 import { formatNumber } from "../utils";
 
 type GoalTrackerData = {
@@ -56,6 +58,8 @@ type AnalyticsGoalTrackerSectionProps = {
 export function AnalyticsGoalTrackerSection({ data, actions }: AnalyticsGoalTrackerSectionProps) {
   const [historyRange, setHistoryRange] = useState<4 | 12>(4);
   const [selectedMonthKey, setSelectedMonthKey] = useState<string | null>(null);
+  const pricingContent = usePricingContent();
+  const upgradeCopy = resolvePricingUpgradeCopy(pricingContent, data.upgradeTarget);
 
   const goalTracker = data.goalTracker;
   const goalHistory = useMemo(() => goalTracker?.history ?? [], [goalTracker?.history]);
@@ -102,9 +106,7 @@ export function AnalyticsGoalTrackerSection({ data, actions }: AnalyticsGoalTrac
       {!data.hasFullAccess || goalTracker.locked ? (
         <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 md:mt-6">
           <p className="text-sm font-semibold text-slate-900">Goal pacing is locked on Free.</p>
-          <p className="mt-1 text-xs text-slate-600 md:text-sm">
-            Upgrade to {data.upgradeTarget} to set monthly inquiry goals and see real-time pace-to-target guidance.
-          </p>
+          <p className="mt-1 text-xs text-slate-600 md:text-sm">{upgradeCopy.description}</p>
           <Link
             to="/dashboard/pricing"
             onClick={() => {
@@ -119,7 +121,7 @@ export function AnalyticsGoalTrackerSection({ data, actions }: AnalyticsGoalTrac
       ) : (
         <>
           <div className="mt-4 grid gap-4 md:mt-6 md:grid-cols-3">
-            <div className="md:col-span-2 rounded-2xl border border-cyan-100 bg-gradient-to-br from-cyan-50 to-white p-4">
+            <div className="md:col-span-2 rounded-2xl border border-cyan-100 bg-linear-to-br from-cyan-50 to-white p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-cyan-700">{goalTracker.monthLabel}</p>

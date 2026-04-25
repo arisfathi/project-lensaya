@@ -248,6 +248,17 @@ export const publicApi = {
       plans: Array<{
         id: string;
         name: string;
+        displayName?: string;
+        tagline?: string | null;
+        subtitle?: string | null;
+        badgeText?: string | null;
+        ctaText?: string | null;
+        monthlyPriceDisplay?: string | null;
+        yearlyPriceDisplay?: string | null;
+        sortOrder?: number;
+        isVisible?: boolean;
+        isActive?: boolean;
+        isMostPopular?: boolean;
         price: number;
         monthlyPrice?: number;
         yearlyPrice?: number;
@@ -265,6 +276,7 @@ export const publicApi = {
         packageLimitScope?: "per_service" | string;
         limits: Record<string, number | boolean>;
         features?: Record<string, boolean>;
+        entitlements?: Record<string, unknown>;
       }>;
     }>("/billing/plans", { auth: false, credentials: "omit", headers: getPublicSiteHeaders() }),
   siteContext: () =>
@@ -308,6 +320,29 @@ export const publicApi = {
     }>("/public/content", { query, auth: false, headers: getPublicSiteHeaders() }),
   pricingContent: () =>
     request<{
+      section: {
+        title: string;
+        subtitle: string;
+      };
+      faq: Array<{
+        question: string;
+        answer: string;
+      }>;
+      upgradeCopy: {
+        transitions: {
+          PRO: {
+            title: string;
+            description: string;
+          };
+          STUDIO: {
+            title: string;
+            description: string;
+          };
+        };
+        warning: string;
+        blocked: string;
+        empty: string;
+      };
       bullets: {
         FREE: string[];
         PRO: string[];

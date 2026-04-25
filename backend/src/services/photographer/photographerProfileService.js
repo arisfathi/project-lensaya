@@ -106,8 +106,11 @@ export const photographerProfileService = {
     ]);
     if (!photographer) throw new ApiError(404, "Photographer profile not found");
 
-    const canHideBranding = String(plan?.name || "FREE").toUpperCase() !== "FREE";
-    const planLimits = planLimitService.mapPlanLimits(plan);
+    const entitlements = planLimitService.toEntitlements(plan);
+    const canHideBranding =
+      Boolean(entitlements?.features?.hideBrandingEnabled) &&
+      String(entitlements?.modes?.brandingMode || "FORCED_LENSAYA") === "REMOVABLE";
+    const canUseTeamTools = Boolean(entitlements?.features?.teamToolsEnabled);
 
     return {
       studioName: photographer.studioName,
@@ -122,7 +125,7 @@ export const photographerProfileService = {
       showHero: photographer.showHero,
       teamSection: {
         enabled: Boolean(photographer.showTeamSection),
-        canManage: Boolean(planLimits.teamSectionTools),
+        canManage: canUseTeamTools,
         members: normalizeTeamMembers(photographer.teamMembers),
       },
       location: photographer.location,
@@ -149,14 +152,17 @@ export const photographerProfileService = {
 
   async updateProfile(userId, data) {
     const photographer = await getPhotographerByUserId(userId);
-    const plan = await planLimitService.getPlanByUserId(userId);
-    const canHideBranding = String(plan?.name || "FREE").toUpperCase() !== "FREE";
-    const planLimits = planLimitService.mapPlanLimits(plan);
-    if (data.teamSection !== undefined && !Boolean(planLimits.teamSectionTools)) {
+    const [plan, hideBrandingGate] = await Promise.all([
+      planLimitService.getPlanByUserId(userId),
+      planLimitService.canHideBranding({ userId }),
+    ]);
+    const entitlements = planLimitService.toEntitlements(plan);
+    const canUseTeamTools = Boolean(entitlements?.features?.teamToolsEnabled);
+    if (data.teamSection !== undefined && !canUseTeamTools) {
       throw new ApiError(403, "Our Team is not available on your current plan.");
     }
-    if (data.hideBranding === true && !canHideBranding) {
-      throw new ApiError(403, "Branding can only be hidden on Pro or Studio plans");
+    if (data.hideBranding === true && !hideBrandingGate.allowed) {
+      throw new ApiError(403, hideBrandingGate.message || "Branding removal is not available on your current plan.");
     }
 
     const normalizedInstagram = normalizeInstagramHandle(data.socialLinks?.instagram);
@@ -222,7 +228,7 @@ export const photographerProfileService = {
       ...(data.specialty !== undefined ? { specialty: toNullableText(data.specialty, 128) } : {}),
       ...(data.style !== undefined ? { style: toNullableText(data.style, 128) } : {}),
       ...(data.hideBranding !== undefined
-        ? { hideBranding: canHideBranding ? Boolean(data.hideBranding) : false }
+        ? { hideBranding: hideBrandingGate.allowed ? Boolean(data.hideBranding) : false }
         : {}),
       ...(usernameChanged ? { username: nextUsername } : {}),
       ...(shouldSyncDefaultWebsiteUrl ? { websiteUrl: `${nextUsername}.${env.publicAppDomain}` } : {}),

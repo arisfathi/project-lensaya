@@ -1,4 +1,6 @@
 import { Button } from "../../../../components/ui/Button";
+import { usePricingContent } from "../../../../hooks/usePricingContent";
+import { resolvePricingUpgradeCopy } from "../../../../lib/pricingContent";
 import type { LeadInsights, LeadTrendPoint } from "../types";
 import { formatLeadSourceLabel, formatMinutesToLabel, formatTrendDayLabel, toPercentLabel } from "../utils";
 
@@ -21,15 +23,16 @@ export function LeadInsightsPanels({
   onLeadTrendWindowChange,
   onUpgradeFromLeads,
 }: LeadInsightsPanelsProps) {
+  const pricingContent = usePricingContent();
+  const upgradeCopy = resolvePricingUpgradeCopy(pricingContent, leadNudgeUpgradeTarget);
+
   return (
     <>
       {bookingLeadInsights?.locked?.advancedAnalytics ? (
         <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 sm:px-4 sm:py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-amber-900">Advanced analytics locked</p>
-            <p className="text-xs text-amber-800">
-              Upgrade to {leadNudgeUpgradeTarget} to unlock source ROI, trends, and response-time benchmarks for better close rate.
-            </p>
+            <p className="text-xs text-amber-800">{upgradeCopy.description}</p>
           </div>
           <Button type="button" variant="secondary" onClick={() => onUpgradeFromLeads("analytics_lock_banner")}>
             View Plans

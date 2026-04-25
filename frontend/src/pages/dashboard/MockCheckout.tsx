@@ -114,7 +114,7 @@ export default function MockCheckout() {
         <DashboardPageHero
           eyebrow="Mock Billing"
           title="Test the checkout flow safely"
-          description="This screen simulates provider checkout without live CHIP credentials. Use it to validate upgrades, trials, failures, and cancellations end to end."
+          description="This screen simulates provider checkout without live payment credentials. Use it to validate upgrades, trials, failures, and cancellations end to end."
           action={
             <Link
               to="/dashboard/pricing"
@@ -230,4 +230,3 @@ export default function MockCheckout() {
     </DashboardLayout>
   );
 }
-

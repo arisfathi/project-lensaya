@@ -5,7 +5,8 @@ import bcrypt from "bcryptjs";
 
 process.env.NODE_ENV = "test";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "test-secret";
-process.env.CHIP_WEBHOOK_SECRET = process.env.CHIP_WEBHOOK_SECRET || "chip-webhook-secret";
+process.env.STRIPE_API_KEY = process.env.STRIPE_API_KEY || "sk_test_stripe_key";
+process.env.STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "whsec_stripe_secret";
 
 const { app } = await import("../src/app.js");
 const { prisma } = await import("../src/config/prisma.js");
@@ -173,39 +174,42 @@ test("POST /public/bookings accepts inquiry payload and returns booking intent r
   );
 });
 
-test("POST /billing/webhook rejects malformed payloads with missing required fields", async () => {
-  const malformedPayload = {
+test("POST /billing/webhook rejects non-Stripe payloads", async () => {
+  const rawBody = JSON.stringify({
     id: "purchase-malformed-1",
     transaction_id: "txn-malformed-1",
-  };
-  const rawBody = JSON.stringify(malformedPayload);
-  const signature = hmacSha256(rawBody, process.env.CHIP_WEBHOOK_SECRET);
+  });
 
   const res = await request(app)
     .post("/api/v1/billing/webhook")
     .set("Content-Type", "application/json")
-    .set("x-chip-signature", signature)
     .send(rawBody);
 
   assert.equal(res.status, 400);
   assert.equal(res.body.success, false);
 });
 
-test("POST /billing/webhook accepts wrapped payload shape and normalizes data for handler", async () => {
-  const innerPayload = {
-    id: "purchase-wrap-1",
-    transaction_id: "txn-wrap-1",
-    status: "paid",
-    amount: 7900,
-    currency: "usd",
-    metadata: { userId: "wrapped-user" },
+test("POST /billing/webhook accepts Stripe event payloads and normalizes data for handler", async () => {
+  const payload = {
+    id: "evt_invoice_paid_critical_1",
+    object: "event",
+    type: "invoice.paid",
+    data: {
+      object: {
+        object: "invoice",
+        id: "in_critical_1",
+        amount_paid: 7900,
+        currency: "usd",
+        payment_intent: "pi_critical_1",
+        subscription: "sub_critical_1",
+        customer: "cus_critical_1",
+        metadata: { userId: "critical-user-1", planTier: "PRO" },
+      },
+    },
   };
-  const wrappedPayload = {
-    event: "payment.updated",
-    data: innerPayload,
-  };
-  const rawBody = JSON.stringify(wrappedPayload);
-  const signature = hmacSha256(rawBody, process.env.CHIP_WEBHOOK_SECRET);
+  const rawBody = JSON.stringify(payload);
+  const timestamp = "1711450000";
+  const signature = hmacSha256(`${timestamp}.${rawBody}`, process.env.STRIPE_WEBHOOK_SECRET);
 
   let receivedPayload = null;
 
@@ -214,8 +218,8 @@ test("POST /billing/webhook accepts wrapped payload shape and normalizes data fo
       {
         target: billingService,
         method: "handlePaymentWebhook",
-        fn: async (payload) => {
-          receivedPayload = payload;
+        fn: async (nextPayload) => {
+          receivedPayload = nextPayload;
           return { received: true };
         },
       },
@@ -224,16 +228,17 @@ test("POST /billing/webhook accepts wrapped payload shape and normalizes data fo
       const res = await request(app)
         .post("/api/v1/billing/webhook")
         .set("Content-Type", "application/json")
-        .set("x-chip-signature", signature)
+        .set("stripe-signature", `t=${timestamp},v1=${signature}`)
         .send(rawBody);
 
       assert.equal(res.status, 200);
       assert.equal(res.body.success, true);
       assert.equal(res.body.data.received, true);
-      assert.equal(receivedPayload.id, "purchase-wrap-1");
-      assert.equal(receivedPayload.transaction_id, "txn-wrap-1");
+      assert.ok(receivedPayload);
+      assert.equal(receivedPayload.provider, "STRIPE");
+      assert.equal(receivedPayload.transaction_id, "pi_critical_1");
+      assert.equal(receivedPayload.purchase_id, "sub_critical_1");
       assert.equal(receivedPayload.status, "paid");
-      assert.equal(receivedPayload._envelope.event, "payment.updated");
     }
   );
 });

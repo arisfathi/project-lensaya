@@ -16,6 +16,11 @@ export const authApi = {
       user: { id: string; email: string; emailVerifiedAt: string | null; fullName: string; username: string | null; role: string; status: string };
       expiresIn: string;
     }>("/auth/google", { method: "POST", body: input, auth: false }),
+  apple: (input: { idToken: string; code?: string; fullName?: string; referralCode?: string }) =>
+    request<{
+      user: { id: string; email: string; emailVerifiedAt: string | null; fullName: string; username: string | null; role: string; status: string };
+      expiresIn: string;
+    }>("/auth/apple", { method: "POST", body: input, auth: false }),
   me: () =>
     request<{
       id: string;
@@ -42,8 +47,31 @@ export const authApi = {
         };
         upgradeTarget: string | null;
       };
+      entitlements?: {
+        name: string;
+        displayName?: string;
+        upgradeTarget: string | null;
+        limits?: {
+          maxServices?: number;
+          maxPortfolioImages?: number;
+          maxPackagesPerService?: number;
+          maxStorageBytes?: number;
+        };
+        features?: {
+          analyticsEnabled?: boolean;
+          customDomainEnabled?: boolean;
+          hideBrandingEnabled?: boolean;
+          leadFiltersEnabled?: boolean;
+          leadExportEnabled?: boolean;
+          leadRemindersEnabled?: boolean;
+          teamToolsEnabled?: boolean;
+        };
+      };
       planFeatures?: {
         teamSectionTools: boolean;
+        hideBrandingEnabled?: boolean;
+        customDomainEnabled?: boolean;
+        analyticsEnabled?: boolean;
       };
     }>("/auth/me"),
   forgotPassword: (input: { email: string }) =>
@@ -66,4 +94,3 @@ export const authApi = {
     }),
   logout: () => request<{ message: string }>("/auth/logout", { method: "POST" }),
 };
-

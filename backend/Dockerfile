@@ -1,0 +1,20 @@
+FROM node:20-bookworm-slim
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY prisma ./prisma
+COPY prisma.config.ts ./prisma.config.ts
+
+RUN npm ci
+
+COPY . .
+
+RUN npm run prisma:generate
+
+ENV NODE_ENV=production
+ENV PORT=4000
+
+EXPOSE 4000
+
+CMD ["npm", "start"]

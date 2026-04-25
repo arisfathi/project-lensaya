@@ -1,0 +1,37 @@
+FROM node:20-bookworm-slim AS frontend_builder
+
+WORKDIR /app
+
+COPY frontend/package.json frontend/package-lock.json ./frontend/
+
+WORKDIR /app/frontend
+RUN npm ci
+
+ARG VITE_APP_BASE_DOMAIN=lensaya.com
+ARG VITE_GOOGLE_CLIENT_ID=
+ARG VITE_APPLE_AUTH_ENABLED=false
+ARG VITE_APPLE_CLIENT_ID=
+ARG VITE_APPLE_REDIRECT_URI=
+ARG VITE_META_PIXEL_ID=
+ARG VITE_PUBLIC_DIRECTORY_ENABLED=false
+
+ENV VITE_APP_BASE_DOMAIN=$VITE_APP_BASE_DOMAIN
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
+ENV VITE_APPLE_AUTH_ENABLED=$VITE_APPLE_AUTH_ENABLED
+ENV VITE_APPLE_CLIENT_ID=$VITE_APPLE_CLIENT_ID
+ENV VITE_APPLE_REDIRECT_URI=$VITE_APPLE_REDIRECT_URI
+ENV VITE_META_PIXEL_ID=$VITE_META_PIXEL_ID
+ENV VITE_PUBLIC_DIRECTORY_ENABLED=$VITE_PUBLIC_DIRECTORY_ENABLED
+
+COPY frontend/ ./
+RUN npm run build
+
+FROM caddy:2-builder AS caddy_builder
+RUN xcaddy build --with github.com/caddy-dns/cloudflare
+
+FROM caddy:2
+WORKDIR /srv
+
+COPY --from=frontend_builder /app/frontend/dist /srv
+COPY --from=caddy_builder /usr/bin/caddy /usr/bin/caddy
+COPY deploy/Caddyfile /etc/caddy/Caddyfile

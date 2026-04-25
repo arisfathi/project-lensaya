@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { Link } from "react-router-dom";
 import type { BillingActionLoading, PaymentStatusConfig, ProfileForm, SubscriptionState } from "../types";
 import { formatDateTime, getPlanBadgeClass } from "../utils";
+import { getBrandingUpgradeMessage } from "../../../../lib/entitlements";
 
 type BillingOverviewCardProps = {
   data: {
@@ -15,6 +16,7 @@ type BillingOverviewCardProps = {
     subscription: SubscriptionState | null;
     paymentStatus: PaymentStatusConfig;
     profile: ProfileForm;
+    brandingUpgradeTarget?: string;
   };
   state: {
     billingActionLoading: BillingActionLoading;
@@ -30,6 +32,7 @@ type BillingOverviewCardProps = {
 
 export function BillingOverviewCard({ data, state, actions }: BillingOverviewCardProps) {
   const PaymentStatusIcon = data.paymentStatus.icon;
+  const portalAvailable = String(data.subscription?.provider || "").toLowerCase() === "stripe";
 
   return (
     <div className="rounded-2xl border border-slate-200/80 bg-[linear-gradient(150deg,_#ffffff_0%,_#f8fafc_70%)] p-4 shadow-sm md:p-6">
@@ -132,7 +135,7 @@ export function BillingOverviewCard({ data, state, actions }: BillingOverviewCar
             <span className="block text-xs text-slate-500">
               {data.profile.canHideBranding
                 ? "Available on your current plan."
-                : "Upgrade to Pro or Studio to remove branding."}
+                : getBrandingUpgradeMessage(data.brandingUpgradeTarget || "PRO")}
             </span>
           </span>
         </label>
@@ -198,19 +201,21 @@ export function BillingOverviewCard({ data, state, actions }: BillingOverviewCar
             View Transactions
           </Link>
 
-          <button
-            type="button"
-            onClick={actions.onOpenBillingPortal}
-            disabled={state.billingActionLoading === "portal"}
-            className={`inline-flex w-full items-center justify-center gap-2 px-4 py-2 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
-              data.paymentStatus.tone === "danger"
-                ? "bg-red-500 text-white hover:bg-red-600"
-                : "border border-cyan-300 text-cyan-700 hover:bg-cyan-50"
-            }`}
-          >
-            <ExternalLink className="w-4 h-4" />
-            {state.billingActionLoading === "portal" ? "Opening..." : "Open Billing Center"}
-          </button>
+          {portalAvailable ? (
+            <button
+              type="button"
+              onClick={actions.onOpenBillingPortal}
+              disabled={state.billingActionLoading === "portal"}
+              className={`inline-flex w-full items-center justify-center gap-2 px-4 py-2 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
+                data.paymentStatus.tone === "danger"
+                  ? "bg-red-500 text-white hover:bg-red-600"
+                  : "border border-cyan-300 text-cyan-700 hover:bg-cyan-50"
+              }`}
+            >
+              <ExternalLink className="w-4 h-4" />
+              {state.billingActionLoading === "portal" ? "Opening..." : "Manage billing"}
+            </button>
+          ) : null}
         </div>
       </div>
 

@@ -9,7 +9,7 @@ Guidance for future Codex/AI agent work on the Lensaya repository.
 **Key Features**:
 - Host-aware routing (3 host types: platform app/admin, managed subdomains, custom domains)
 - Photographer-scoped data (tenant isolation via Prisma middleware)
-- Subscription billing (CHIP + Stripe payment providers)
+- Subscription billing (Stripe)
 - Asset management (R2 storage, image optimization, cleanup)
 - Analytics (event ingestion, daily rollups)
 - Moderation system (flagged assets, suspended accounts)
@@ -450,7 +450,7 @@ frontend/src/lib/api/[domain].ts
 - [ ] Test watermark logic for free plan (images processed correctly)
 
 **If touching webhooks**:
-- [ ] Verify signature verification (CHIP/Stripe)
+- [ ] Verify signature verification (Stripe)
 - [ ] Test with correct AND wrong signatures (should reject wrong ones)
 - [ ] Check webhook is idempotent (duplicates are safe)
 - [ ] Verify side effects (emails, notifications, DB updates)
@@ -555,7 +555,7 @@ frontend/src/lib/api/[domain].ts
 **How to stay safe**:
 - Always check subscription status before applying state transitions
 - Use status-aware upserts, not unconditional inserts
-- Query by externalId (CHIP/Stripe reference ID), not by timestamp
+- Query by externalId (Stripe reference ID), not by timestamp
 - Write tests that process the same webhook twice (verifyFlow.test.js does this)
 
 **Test coverage**: [backend/tests/subscriptionFlow.test.js](../backend/tests/subscriptionFlow.test.js), [backend/tests/stripeBilling.test.js](../backend/tests/stripeBilling.test.js)
@@ -633,7 +633,6 @@ frontend/src/lib/api/[domain].ts
 **Risk**: Attacker forges webhook signature → malicious action (fake payment, false referral, etc.)
 
 **Locations**:
-- CHIP: [backend/src/services/chipService.js](../backend/src/services/chipService.js)
 - Stripe: [backend/src/services/stripeService.js](../backend/src/services/stripeService.js)
 
 **What can go wrong**:
@@ -681,7 +680,7 @@ frontend/src/lib/api/[domain].ts
 **What can go wrong**:
 - DNS CNAME not pointing to right place
 - Verification mode mismatch (DNS vs mock)
-- CHIP can't reach app via custom domain
+- Stripe webhooks can't reach app via custom domain
 - Database stores wrong domain variant (with/without www)
 
 **How to stay safe**:

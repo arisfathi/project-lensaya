@@ -2,9 +2,38 @@ import { Check, Edit2 } from "lucide-react";
 import type { LimitsShape, PlanKey, PricingShape } from "../types";
 import { formatLimitValue } from "../utils";
 
-type LimitNumberField = "services" | "portfolioPhotos" | "packagesPerService" | "packageFeatures";
-type FeatureField = "customDomain" | "analyticsTools" | "teamSectionTools";
+type LimitNumberField =
+  | "services"
+  | "portfolioPhotos"
+  | "packagesPerService"
+  | "packageFeatures"
+  | "storageGb"
+  | "leadHistoryDays"
+  | "leadVisibilityLimit"
+  | "leadTemplatesCount"
+  | "teamSeats";
+type FeatureField =
+  | "customDomain"
+  | "analyticsTools"
+  | "hideBrandingEnabled"
+  | "leadFiltersEnabled"
+  | "leadExportEnabled"
+  | "leadRemindersEnabled"
+  | "leadAdvancedAnalyticsEnabled"
+  | "teamSectionTools"
+  | "isVisible"
+  | "isActive"
+  | "isMostPopular";
+type ModeField = "analyticsMode" | "leadAnalyticsMode" | "supportTier" | "brandingMode";
 type PricingNumberField = "price" | "yearlyPrice" | "trialDays";
+type PricingTextField =
+  | "displayName"
+  | "tagline"
+  | "subtitle"
+  | "badgeText"
+  | "ctaText"
+  | "monthlyPriceDisplay"
+  | "yearlyPriceDisplay";
 
 type PlanConfigurationData = {
   editingLimits: boolean;
@@ -22,7 +51,11 @@ type PlanConfigurationActions = {
   onLimitChange: (plan: PlanKey, field: LimitNumberField, value: string) => void;
   onToggleFeature: (plan: PlanKey, field: FeatureField, value: boolean) => void;
   onPricingNumberChange: (plan: PlanKey, field: PricingNumberField, value: string) => void;
+  onPricingTextChange: (plan: PlanKey, field: PricingTextField, value: string) => void;
   onPricingCurrencyChange: (plan: PlanKey, value: string) => void;
+  onSortOrderChange: (plan: PlanKey, value: string) => void;
+  onModeChange: (plan: PlanKey, field: ModeField, value: string) => void;
+  onLeadChannelToggle: (plan: PlanKey, channel: "whatsapp" | "email", value: boolean) => void;
 };
 
 type PlanConfigurationSectionProps = {
@@ -135,16 +168,22 @@ export function PlanConfigurationSection({ data, actions, formatCurrency }: Plan
                 editing={data.editingLimits}
                 value={editablePricing.free.currency}
                 onChange={(value) => actions.onPricingCurrencyChange("free", value)}
+                maxLength={3}
+                uppercase
               />
               <PricingTextCell
                 editing={data.editingLimits}
                 value={editablePricing.pro.currency}
                 onChange={(value) => actions.onPricingCurrencyChange("pro", value)}
+                maxLength={3}
+                uppercase
               />
               <PricingTextCell
                 editing={data.editingLimits}
                 value={editablePricing.studio.currency}
                 onChange={(value) => actions.onPricingCurrencyChange("studio", value)}
+                maxLength={3}
+                uppercase
               />
             </tr>
             <tr>
@@ -170,6 +209,36 @@ export function PlanConfigurationSection({ data, actions, formatCurrency }: Plan
                 displayValue={editablePricing.studio.trialDays}
                 step="1"
               />
+            </tr>
+            <tr>
+              <td className="px-6 py-4 text-sm font-medium text-slate-900">Display Name</td>
+              <PricingTextCell editing={data.editingLimits} value={editablePricing.free.displayName} onChange={(value) => actions.onPricingTextChange("free", "displayName", value)} />
+              <PricingTextCell editing={data.editingLimits} value={editablePricing.pro.displayName} onChange={(value) => actions.onPricingTextChange("pro", "displayName", value)} />
+              <PricingTextCell editing={data.editingLimits} value={editablePricing.studio.displayName} onChange={(value) => actions.onPricingTextChange("studio", "displayName", value)} />
+            </tr>
+            <tr>
+              <td className="px-6 py-4 text-sm font-medium text-slate-900">Tagline</td>
+              <PricingTextCell editing={data.editingLimits} value={editablePricing.free.tagline} onChange={(value) => actions.onPricingTextChange("free", "tagline", value)} />
+              <PricingTextCell editing={data.editingLimits} value={editablePricing.pro.tagline} onChange={(value) => actions.onPricingTextChange("pro", "tagline", value)} />
+              <PricingTextCell editing={data.editingLimits} value={editablePricing.studio.tagline} onChange={(value) => actions.onPricingTextChange("studio", "tagline", value)} />
+            </tr>
+            <tr>
+              <td className="px-6 py-4 text-sm font-medium text-slate-900">CTA Text</td>
+              <PricingTextCell editing={data.editingLimits} value={editablePricing.free.ctaText} onChange={(value) => actions.onPricingTextChange("free", "ctaText", value)} />
+              <PricingTextCell editing={data.editingLimits} value={editablePricing.pro.ctaText} onChange={(value) => actions.onPricingTextChange("pro", "ctaText", value)} />
+              <PricingTextCell editing={data.editingLimits} value={editablePricing.studio.ctaText} onChange={(value) => actions.onPricingTextChange("studio", "ctaText", value)} />
+            </tr>
+            <tr>
+              <td className="px-6 py-4 text-sm font-medium text-slate-900">Badge</td>
+              <PricingTextCell editing={data.editingLimits} value={editablePricing.free.badgeText} onChange={(value) => actions.onPricingTextChange("free", "badgeText", value)} />
+              <PricingTextCell editing={data.editingLimits} value={editablePricing.pro.badgeText} onChange={(value) => actions.onPricingTextChange("pro", "badgeText", value)} />
+              <PricingTextCell editing={data.editingLimits} value={editablePricing.studio.badgeText} onChange={(value) => actions.onPricingTextChange("studio", "badgeText", value)} />
+            </tr>
+            <tr>
+              <td className="px-6 py-4 text-sm font-medium text-slate-900">Display Order</td>
+              <PricingNumberCell editing={data.editingLimits} value={editablePricing.free.sortOrder} onChange={(value) => actions.onSortOrderChange("free", value)} displayValue={editablePricing.free.sortOrder} step="1" />
+              <PricingNumberCell editing={data.editingLimits} value={editablePricing.pro.sortOrder} onChange={(value) => actions.onSortOrderChange("pro", value)} displayValue={editablePricing.pro.sortOrder} step="1" />
+              <PricingNumberCell editing={data.editingLimits} value={editablePricing.studio.sortOrder} onChange={(value) => actions.onSortOrderChange("studio", value)} displayValue={editablePricing.studio.sortOrder} step="1" />
             </tr>
             <tr>
               <td className="px-6 py-4 text-sm font-medium text-slate-900">Max Services</td>
@@ -244,6 +313,36 @@ export function PlanConfigurationSection({ data, actions, formatCurrency }: Plan
               />
             </tr>
             <tr>
+              <td className="px-6 py-4 text-sm font-medium text-slate-900">Storage (GB)</td>
+              <LimitNumberCell editing={data.editingLimits} value={editable.free.storageGb} onChange={(value) => actions.onLimitChange("free", "storageGb", value)} />
+              <LimitNumberCell editing={data.editingLimits} value={editable.pro.storageGb} onChange={(value) => actions.onLimitChange("pro", "storageGb", value)} />
+              <LimitNumberCell editing={data.editingLimits} value={editable.studio.storageGb} onChange={(value) => actions.onLimitChange("studio", "storageGb", value)} />
+            </tr>
+            <tr>
+              <td className="px-6 py-4 text-sm font-medium text-slate-900">Inquiry History (days)</td>
+              <LimitNumberCell editing={data.editingLimits} value={editable.free.leadHistoryDays} onChange={(value) => actions.onLimitChange("free", "leadHistoryDays", value)} />
+              <LimitNumberCell editing={data.editingLimits} value={editable.pro.leadHistoryDays} onChange={(value) => actions.onLimitChange("pro", "leadHistoryDays", value)} />
+              <LimitNumberCell editing={data.editingLimits} value={editable.studio.leadHistoryDays} onChange={(value) => actions.onLimitChange("studio", "leadHistoryDays", value)} />
+            </tr>
+            <tr>
+              <td className="px-6 py-4 text-sm font-medium text-slate-900">Stored Inquiries</td>
+              <LimitNumberCell editing={data.editingLimits} value={editable.free.leadVisibilityLimit} onChange={(value) => actions.onLimitChange("free", "leadVisibilityLimit", value)} />
+              <LimitNumberCell editing={data.editingLimits} value={editable.pro.leadVisibilityLimit} onChange={(value) => actions.onLimitChange("pro", "leadVisibilityLimit", value)} />
+              <LimitNumberCell editing={data.editingLimits} value={editable.studio.leadVisibilityLimit} onChange={(value) => actions.onLimitChange("studio", "leadVisibilityLimit", value)} />
+            </tr>
+            <tr>
+              <td className="px-6 py-4 text-sm font-medium text-slate-900">Quick Reply Templates</td>
+              <LimitNumberCell editing={data.editingLimits} value={editable.free.leadTemplatesCount} onChange={(value) => actions.onLimitChange("free", "leadTemplatesCount", value)} />
+              <LimitNumberCell editing={data.editingLimits} value={editable.pro.leadTemplatesCount} onChange={(value) => actions.onLimitChange("pro", "leadTemplatesCount", value)} />
+              <LimitNumberCell editing={data.editingLimits} value={editable.studio.leadTemplatesCount} onChange={(value) => actions.onLimitChange("studio", "leadTemplatesCount", value)} />
+            </tr>
+            <tr>
+              <td className="px-6 py-4 text-sm font-medium text-slate-900">Team Seats</td>
+              <LimitNumberCell editing={data.editingLimits} value={editable.free.teamSeats} onChange={(value) => actions.onLimitChange("free", "teamSeats", value)} />
+              <LimitNumberCell editing={data.editingLimits} value={editable.pro.teamSeats} onChange={(value) => actions.onLimitChange("pro", "teamSeats", value)} />
+              <LimitNumberCell editing={data.editingLimits} value={editable.studio.teamSeats} onChange={(value) => actions.onLimitChange("studio", "teamSeats", value)} />
+            </tr>
+            <tr>
               <td className="px-6 py-4 text-sm font-medium text-slate-900">Custom Domain</td>
               <FeatureToggleCell
                 editing={data.editingLimits}
@@ -278,6 +377,84 @@ export function PlanConfigurationSection({ data, actions, formatCurrency }: Plan
                 checked={editable.studio.teamSectionTools}
                 onChange={(value) => actions.onToggleFeature("studio", "teamSectionTools", value)}
               />
+            </tr>
+            <tr>
+              <td className="px-6 py-4 text-sm font-medium text-slate-900">Remove Lensaya Branding</td>
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.free.hideBrandingEnabled} onChange={(value) => actions.onToggleFeature("free", "hideBrandingEnabled", value)} />
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.pro.hideBrandingEnabled} onChange={(value) => actions.onToggleFeature("pro", "hideBrandingEnabled", value)} />
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.studio.hideBrandingEnabled} onChange={(value) => actions.onToggleFeature("studio", "hideBrandingEnabled", value)} />
+            </tr>
+            <tr>
+              <td className="px-6 py-4 text-sm font-medium text-slate-900">Inquiry Filters</td>
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.free.leadFiltersEnabled} onChange={(value) => actions.onToggleFeature("free", "leadFiltersEnabled", value)} />
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.pro.leadFiltersEnabled} onChange={(value) => actions.onToggleFeature("pro", "leadFiltersEnabled", value)} />
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.studio.leadFiltersEnabled} onChange={(value) => actions.onToggleFeature("studio", "leadFiltersEnabled", value)} />
+            </tr>
+            <tr>
+              <td className="px-6 py-4 text-sm font-medium text-slate-900">Inquiry Export</td>
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.free.leadExportEnabled} onChange={(value) => actions.onToggleFeature("free", "leadExportEnabled", value)} />
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.pro.leadExportEnabled} onChange={(value) => actions.onToggleFeature("pro", "leadExportEnabled", value)} />
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.studio.leadExportEnabled} onChange={(value) => actions.onToggleFeature("studio", "leadExportEnabled", value)} />
+            </tr>
+            <tr>
+              <td className="px-6 py-4 text-sm font-medium text-slate-900">Follow-up Reminders</td>
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.free.leadRemindersEnabled} onChange={(value) => actions.onToggleFeature("free", "leadRemindersEnabled", value)} />
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.pro.leadRemindersEnabled} onChange={(value) => actions.onToggleFeature("pro", "leadRemindersEnabled", value)} />
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.studio.leadRemindersEnabled} onChange={(value) => actions.onToggleFeature("studio", "leadRemindersEnabled", value)} />
+            </tr>
+            <tr>
+              <td className="px-6 py-4 text-sm font-medium text-slate-900">Advanced Lead Analytics</td>
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.free.leadAdvancedAnalyticsEnabled} onChange={(value) => actions.onToggleFeature("free", "leadAdvancedAnalyticsEnabled", value)} />
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.pro.leadAdvancedAnalyticsEnabled} onChange={(value) => actions.onToggleFeature("pro", "leadAdvancedAnalyticsEnabled", value)} />
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.studio.leadAdvancedAnalyticsEnabled} onChange={(value) => actions.onToggleFeature("studio", "leadAdvancedAnalyticsEnabled", value)} />
+            </tr>
+            <tr>
+              <td className="px-6 py-4 text-sm font-medium text-slate-900">Visible on Pricing</td>
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.free.isVisible} onChange={(value) => actions.onToggleFeature("free", "isVisible", value)} />
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.pro.isVisible} onChange={(value) => actions.onToggleFeature("pro", "isVisible", value)} />
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.studio.isVisible} onChange={(value) => actions.onToggleFeature("studio", "isVisible", value)} />
+            </tr>
+            <tr>
+              <td className="px-6 py-4 text-sm font-medium text-slate-900">Plan Active</td>
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.free.isActive} onChange={(value) => actions.onToggleFeature("free", "isActive", value)} />
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.pro.isActive} onChange={(value) => actions.onToggleFeature("pro", "isActive", value)} />
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.studio.isActive} onChange={(value) => actions.onToggleFeature("studio", "isActive", value)} />
+            </tr>
+            <tr>
+              <td className="px-6 py-4 text-sm font-medium text-slate-900">Most Popular</td>
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.free.isMostPopular} onChange={(value) => actions.onToggleFeature("free", "isMostPopular", value)} />
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.pro.isMostPopular} onChange={(value) => actions.onToggleFeature("pro", "isMostPopular", value)} />
+              <FeatureToggleCell editing={data.editingLimits} checked={editable.studio.isMostPopular} onChange={(value) => actions.onToggleFeature("studio", "isMostPopular", value)} />
+            </tr>
+            <tr>
+              <td className="px-6 py-4 text-sm font-medium text-slate-900">Analytics Mode</td>
+              <ModeCell editing={data.editingLimits} value={editable.free.analyticsMode} onChange={(value) => actions.onModeChange("free", "analyticsMode", value)} options={["NONE", "BASIC", "ADVANCED"]} />
+              <ModeCell editing={data.editingLimits} value={editable.pro.analyticsMode} onChange={(value) => actions.onModeChange("pro", "analyticsMode", value)} options={["NONE", "BASIC", "ADVANCED"]} />
+              <ModeCell editing={data.editingLimits} value={editable.studio.analyticsMode} onChange={(value) => actions.onModeChange("studio", "analyticsMode", value)} options={["NONE", "BASIC", "ADVANCED"]} />
+            </tr>
+            <tr>
+              <td className="px-6 py-4 text-sm font-medium text-slate-900">Lead Analytics Mode</td>
+              <ModeCell editing={data.editingLimits} value={editable.free.leadAnalyticsMode} onChange={(value) => actions.onModeChange("free", "leadAnalyticsMode", value)} options={["NONE", "BASIC", "ADVANCED"]} />
+              <ModeCell editing={data.editingLimits} value={editable.pro.leadAnalyticsMode} onChange={(value) => actions.onModeChange("pro", "leadAnalyticsMode", value)} options={["NONE", "BASIC", "ADVANCED"]} />
+              <ModeCell editing={data.editingLimits} value={editable.studio.leadAnalyticsMode} onChange={(value) => actions.onModeChange("studio", "leadAnalyticsMode", value)} options={["NONE", "BASIC", "ADVANCED"]} />
+            </tr>
+            <tr>
+              <td className="px-6 py-4 text-sm font-medium text-slate-900">Support Tier</td>
+              <ModeCell editing={data.editingLimits} value={editable.free.supportTier} onChange={(value) => actions.onModeChange("free", "supportTier", value)} options={["STANDARD", "PRIORITY"]} />
+              <ModeCell editing={data.editingLimits} value={editable.pro.supportTier} onChange={(value) => actions.onModeChange("pro", "supportTier", value)} options={["STANDARD", "PRIORITY"]} />
+              <ModeCell editing={data.editingLimits} value={editable.studio.supportTier} onChange={(value) => actions.onModeChange("studio", "supportTier", value)} options={["STANDARD", "PRIORITY"]} />
+            </tr>
+            <tr>
+              <td className="px-6 py-4 text-sm font-medium text-slate-900">Branding Mode</td>
+              <ModeCell editing={data.editingLimits} value={editable.free.brandingMode} onChange={(value) => actions.onModeChange("free", "brandingMode", value)} options={["FORCED_LENSAYA", "REMOVABLE"]} />
+              <ModeCell editing={data.editingLimits} value={editable.pro.brandingMode} onChange={(value) => actions.onModeChange("pro", "brandingMode", value)} options={["FORCED_LENSAYA", "REMOVABLE"]} />
+              <ModeCell editing={data.editingLimits} value={editable.studio.brandingMode} onChange={(value) => actions.onModeChange("studio", "brandingMode", value)} options={["FORCED_LENSAYA", "REMOVABLE"]} />
+            </tr>
+            <tr>
+              <td className="px-6 py-4 text-sm font-medium text-slate-900">Lead Channels</td>
+              <LeadChannelCell editing={data.editingLimits} value={editable.free.leadChannels} onToggle={(channel, checked) => actions.onLeadChannelToggle("free", channel, checked)} />
+              <LeadChannelCell editing={data.editingLimits} value={editable.pro.leadChannels} onToggle={(channel, checked) => actions.onLeadChannelToggle("pro", channel, checked)} />
+              <LeadChannelCell editing={data.editingLimits} value={editable.studio.leadChannels} onToggle={(channel, checked) => actions.onLeadChannelToggle("studio", channel, checked)} />
             </tr>
             <tr>
               <td className="px-6 py-4 text-sm font-medium text-slate-900">Analytics Tools</td>
@@ -335,18 +512,22 @@ type PricingTextCellProps = {
   editing: boolean;
   value: string;
   onChange: (value: string) => void;
+  maxLength?: number;
+  uppercase?: boolean;
 };
 
-function PricingTextCell({ editing, value, onChange }: PricingTextCellProps) {
+function PricingTextCell({ editing, value, onChange, maxLength = 120, uppercase = false }: PricingTextCellProps) {
   return (
     <td className="px-6 py-4 text-sm text-center text-slate-600">
       {editing ? (
         <input
           type="text"
-          maxLength={3}
+          maxLength={maxLength}
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          className="w-20 mx-auto px-2 py-1 border border-gray-200 rounded text-center uppercase"
+          className={`w-28 mx-auto px-2 py-1 border border-gray-200 rounded text-center ${
+            uppercase ? "uppercase" : ""
+          }`}
         />
       ) : (
         value
@@ -399,6 +580,73 @@ function FeatureToggleCell({ editing, checked, onChange }: FeatureToggleCellProp
       ) : (
         <span className="text-slate-400">-</span>
       )}
+    </td>
+  );
+}
+
+type ModeCellProps = {
+  editing: boolean;
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+};
+
+function ModeCell({ editing, value, onChange, options }: ModeCellProps) {
+  return (
+    <td className="px-6 py-4 text-sm text-center text-slate-600">
+      {editing ? (
+        <select
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="w-32 mx-auto px-2 py-1 border border-gray-200 rounded text-center"
+        >
+          {options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      ) : (
+        value
+      )}
+    </td>
+  );
+}
+
+type LeadChannelCellProps = {
+  editing: boolean;
+  value: { whatsapp: boolean; email: boolean };
+  onToggle: (channel: "whatsapp" | "email", checked: boolean) => void;
+};
+
+function LeadChannelCell({ editing, value, onToggle }: LeadChannelCellProps) {
+  if (!editing) {
+    const enabled = [value.whatsapp ? "WhatsApp" : null, value.email ? "Email" : null].filter(Boolean);
+    return <td className="px-6 py-4 text-sm text-center text-slate-600">{enabled.join(", ") || "-"}</td>;
+  }
+
+  return (
+    <td className="px-6 py-4 text-sm text-center text-slate-600">
+      <div className="mx-auto flex w-fit items-center gap-3">
+        <label className="inline-flex items-center gap-1 text-xs">
+          <input
+            type="checkbox"
+            checked={Boolean(value.whatsapp)}
+            onChange={(event) => onToggle("whatsapp", event.target.checked)}
+            className="w-3.5 h-3.5"
+          />
+          WhatsApp
+        </label>
+        <label className="inline-flex items-center gap-1 text-xs">
+          <input
+            type="checkbox"
+            checked={Boolean(value.email)}
+            onChange={(event) => onToggle("email", event.target.checked)}
+            className="w-3.5 h-3.5"
+          />
+          Email
+        </label>
+      </div>
     </td>
   );
 }

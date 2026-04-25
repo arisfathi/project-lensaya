@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Check, CreditCard, Sparkles } from "lucide-react";
 import { publicApi } from "../lib/api";
@@ -7,66 +7,20 @@ import { Footer } from "../components/Footer";
 import { useAuth } from "../contexts/AuthContext";
 import { Button } from "../components/ui/Button";
 import { LoadingCard } from "../components/ui/LoadingSpinner";
+import { usePricingContent } from "../hooks/usePricingContent";
+import {
+  resolvePlanCopy,
+  resolvePricingFaq,
+  resolvePricingSectionCopy,
+} from "../lib/pricingContent";
+import { trackPricingEventSafe } from "../lib/pricingAnalytics";
+import { formatCurrencyAmount } from "../lib/currency";
+import { buildPlanHighlightsFromLimits, buildPublicComparisonRowsFromLimits } from "../lib/pricingLimits";
 
 type BillingCycle = "monthly" | "yearly";
 type PlanId = "FREE" | "PRO" | "STUDIO";
 type BillingPlan = Omit<Awaited<ReturnType<typeof publicApi.plans>>["plans"][number], "id"> & { id: PlanId };
-type PublicPricingContent = Awaited<ReturnType<typeof publicApi.pricingContent>>;
-
 const planOrder: PlanId[] = ["FREE", "PRO", "STUDIO"];
-
-const defaultPublicPricingContent: PublicPricingContent = {
-  bullets: {
-    FREE: ["No credit card required", "Publish your portfolio fast", "Best for trying Lensaya"],
-    PRO: ["Most popular for active photographers", "Higher limits for growth", "Priority support included"],
-    STUDIO: ["For high-volume studios", "Large catalogs and team workflows", "Maximum flexibility and scale"],
-  },
-  compareRows: [
-    {
-      id: "portfolio-photos",
-      label: "Portfolio Photos",
-      sortOrder: 0,
-      values: { FREE: "100", PRO: "1000", STUDIO: "Unlimited" },
-    },
-    {
-      id: "services",
-      label: "Services",
-      sortOrder: 1,
-      values: { FREE: "3", PRO: "15", STUDIO: "Unlimited" },
-    },
-    {
-      id: "custom-domain",
-      label: "Custom Domain",
-      sortOrder: 2,
-      values: { FREE: "Not included", PRO: "Included", STUDIO: "Included" },
-    },
-  ],
-  updatedAt: null,
-};
-
-const planCopy: Record<BillingPlan["id"], { summary: string }> = {
-  FREE: {
-    summary: "Best for getting started and publishing a clean portfolio fast.",
-  },
-  PRO: {
-    summary: "Best for active photographers who need room to scale and convert.",
-  },
-  STUDIO: {
-    summary: "Best for high-volume studios with larger teams and catalogs.",
-  },
-};
-
-const formatPrice = (price: number, currency = "USD") => {
-  try {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency,
-      maximumFractionDigits: 2,
-    }).format(price);
-  } catch {
-    return `$${price}`;
-  }
-};
 
 const resolveCyclePrice = (plan: BillingPlan, billingCycle: BillingCycle) => {
   const monthly = Number(plan.pricing?.monthly ?? plan.monthlyPrice ?? plan.price ?? 0);
@@ -77,21 +31,35 @@ const resolveCyclePrice = (plan: BillingPlan, billingCycle: BillingCycle) => {
 
 const resolveCycleLabel = (billingCycle: BillingCycle) => (billingCycle === "yearly" ? "year" : "month");
 
-const formatBillingCycleLabel = (value: BillingCycle | null | undefined) => {
-  if (value === "yearly") return "Yearly";
-  if (value === "monthly") return "Monthly";
-  return "Not applicable";
-};
-
 export default function Pricing() {
   const [plans, setPlans] = useState<BillingPlan[]>([]);
-  const [pricingContent, setPricingContent] = useState<PublicPricingContent>(defaultPublicPricingContent);
   const [loading, setLoading] = useState(true);
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("monthly");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const pricingContent = usePricingContent();
+  const pricingPageViewTrackedRef = useRef(false);
 
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
+
+  useEffect(() => {
+    if (pricingPageViewTrackedRef.current) return;
+    pricingPageViewTrackedRef.current = true;
+
+    const path = typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : null;
+    const pageUrl = typeof window !== "undefined" ? window.location.href : null;
+    const referrer = typeof document !== "undefined" ? document.referrer || null : null;
+
+    trackPricingEventSafe({
+      eventName: "pricing_page_viewed",
+      pageContext: "public_pricing_page",
+      currentPlan: isAuthenticated ? "FREE" : "FREE",
+      source: "public",
+      path,
+      pageUrl,
+      referrer,
+    });
+  }, [isAuthenticated]);
 
   useEffect(() => {
     let mounted = true;
@@ -99,25 +67,26 @@ export default function Pricing() {
     const loadPlans = async () => {
       setLoading(true);
       try {
-        const [plansResult, contentResult] = await Promise.all([publicApi.plans(), publicApi.pricingContent()]);
+        const plansResult = await publicApi.plans();
         if (!mounted) return;
 
         const ordered = plansResult.plans
           .slice()
+          .filter((plan) => plan.isVisible !== false && plan.isActive !== false)
           .map((plan) => ({ ...plan, id: plan.id as PlanId }))
-          .sort((a, b) => planOrder.indexOf(a.id) - planOrder.indexOf(b.id));
+          .sort((a, b) => {
+            const aSort = Number(a.sortOrder ?? planOrder.indexOf(a.id));
+            const bSort = Number(b.sortOrder ?? planOrder.indexOf(b.id));
+            return aSort - bSort;
+          });
         setPlans(ordered);
-        setPricingContent(contentResult);
         setErrorMessage(null);
       } catch {
         if (!mounted) return;
         setPlans([]);
-        setPricingContent(defaultPublicPricingContent);
         setErrorMessage("Unable to load pricing right now.");
       } finally {
-        if (mounted) {
-          setLoading(false);
-        }
+        if (mounted) setLoading(false);
       }
     };
 
@@ -129,9 +98,25 @@ export default function Pricing() {
   }, []);
 
   const previewPlans = plans.length >= 3 ? plans : null;
+  const proPlan = plans.find((plan) => plan.id === "PRO") ?? null;
 
   const handlePublicPlanCta = useCallback(
     (targetPlanId: BillingPlan["id"]) => {
+      const path = typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : null;
+      const pageUrl = typeof window !== "undefined" ? window.location.href : null;
+      const referrer = typeof document !== "undefined" ? document.referrer || null : null;
+
+      trackPricingEventSafe({
+        eventName: "pricing_plan_cta_clicked",
+        pageContext: "public_pricing_page",
+        currentPlan: "FREE",
+        targetPlan: targetPlanId,
+        source: "public",
+        path,
+        pageUrl,
+        referrer,
+      });
+
       if (!isAuthenticated) {
         const redirectPath = targetPlanId === "FREE" ? "/dashboard" : "/dashboard/pricing";
         navigate(`/signup?redirect=${encodeURIComponent(redirectPath)}`);
@@ -145,37 +130,33 @@ export default function Pricing() {
 
   const cards = useMemo(() => {
     return plans.map((plan) => {
-      const isPopular = plan.id === "PRO";
+      const isPopular = Boolean(plan.isMostPopular ?? plan.id === "PRO");
       const cyclePrice = resolveCyclePrice(plan, billingCycle);
-      const cycleLabel = resolveCycleLabel(billingCycle);
-      const bullets = pricingContent.bullets?.[plan.id] || [];
-      const ctaLabel =
-        plan.id === "FREE" ? "Start Free" : `Start ${plan.name} ${formatBillingCycleLabel(billingCycle)}`;
+      const cycleLabel = plan.id === "FREE" ? "forever" : `per ${resolveCycleLabel(billingCycle)}`;
+      const bullets = buildPlanHighlightsFromLimits(plan);
+      const copy = resolvePlanCopy(plan);
 
       return (
         <div
           key={plan.id}
           className={`relative rounded-[28px] border border-white/70 bg-white/90 p-6 shadow-[0_18px_50px_rgba(15,23,42,0.06)] backdrop-blur ${
-            isPopular ? "ring-2 ring-cyan-200" : ""
+            isPopular ? "ring-2 ring-cyan-200 shadow-[0_24px_80px_rgba(15,23,42,0.1)]" : ""
           }`}
         >
-          {isPopular ? (
-            <div className="absolute -top-3 left-6 inline-flex items-center gap-1 rounded-full bg-cyan-500 px-3 py-1 text-xs font-semibold text-white shadow-lg">
-              <Sparkles className="h-3 w-3" />
-              Most Popular
-            </div>
-          ) : null}
+          <div className="absolute -top-3 left-6 inline-flex items-center gap-1 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700 shadow-sm">
+            {isPopular ? <Sparkles className="h-3 w-3" /> : null}
+            {copy.badge}
+          </div>
 
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-2xl font-bold text-slate-950">{plan.name}</h2>
-              <p className="mt-2 text-sm text-slate-600">{planCopy[plan.id].summary}</p>
-            </div>
+          <div className="mt-2">
+            <h2 className="text-2xl font-bold text-slate-950">{plan.displayName || plan.name}</h2>
+            <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-cyan-700">{copy.tagline}</p>
+            <p className="mt-2 text-sm text-slate-600">{copy.description}</p>
           </div>
 
           <div className="mt-4 flex items-end gap-1">
-            <span className="text-4xl font-bold text-slate-950">{formatPrice(cyclePrice, plan.currency)}</span>
-            <span className="mb-1 text-slate-500">/{cycleLabel}</span>
+            <span className="text-4xl font-bold text-slate-950">{formatCurrencyAmount(cyclePrice, plan.currency)}</span>
+            <span className="mb-1 text-slate-500">/ {cycleLabel}</span>
           </div>
           {billingCycle === "yearly" && plan.id !== "FREE" ? (
             <p className="mt-1 text-xs text-emerald-600">
@@ -202,25 +183,21 @@ export default function Pricing() {
 
           <Button
             className="mt-8 w-full"
-            variant={plan.id === "FREE" ? "secondary" : "primary"}
+            variant={isPopular ? "primary" : plan.id === "FREE" ? "secondary" : "primary"}
             onClick={() => {
               handlePublicPlanCta(plan.id);
             }}
           >
-            {ctaLabel}
+            {copy.cta}
           </Button>
         </div>
       );
     });
-  }, [billingCycle, handlePublicPlanCta, plans, pricingContent.bullets]);
+  }, [billingCycle, handlePublicPlanCta, plans]);
 
-  const compareRows = useMemo(
-    () =>
-      (pricingContent.compareRows || [])
-        .slice()
-        .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)),
-    [pricingContent.compareRows]
-  );
+  const compareRows = useMemo(() => buildPublicComparisonRowsFromLimits(plans), [plans]);
+  const sectionCopy = useMemo(() => resolvePricingSectionCopy(pricingContent), [pricingContent]);
+  const faqItems = useMemo(() => resolvePricingFaq(pricingContent), [pricingContent]);
 
   return (
     <div className="min-h-screen bg-white">
@@ -228,7 +205,7 @@ export default function Pricing() {
 
       <main className="brand-shell">
         <section className="mx-auto max-w-7xl px-4 pb-10 pt-10 sm:px-6 sm:pb-14 sm:pt-16 lg:px-8">
-          <div className="brand-panel relative overflow-hidden rounded-[32px] border border-white/70 p-8 shadow-[0_24px_80px_rgba(15,23,42,0.08)] sm:p-10 lg:p-12">
+          <div className="brand-panel relative overflow-hidden rounded-4xl border border-white/70 p-8 shadow-[0_24px_80px_rgba(15,23,42,0.08)] sm:p-10 lg:p-12">
             <div className="absolute right-[-8%] top-[-18%] h-64 w-64 rounded-full bg-cyan-400/15 blur-3xl" />
             <div className="absolute bottom-[-20%] left-[-10%] h-72 w-72 rounded-full bg-sky-400/10 blur-3xl" />
 
@@ -239,17 +216,16 @@ export default function Pricing() {
                   Pricing plans
                 </div>
                 <h1 className="mt-5 text-4xl font-bold tracking-tight text-slate-950 sm:text-5xl lg:text-6xl">
-                  Choose the plan that fits your studio
+                  {sectionCopy.title}
                 </h1>
                 <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-600 sm:text-xl">
-                  Public messaging and comparison rows are managed from admin, while displayed prices always mirror your
-                  real billing plan configuration.
+                  {sectionCopy.subtitle}
                 </p>
 
                 <div className="mt-6 flex flex-wrap gap-3 text-sm text-slate-600">
                   <span className="rounded-full border border-slate-200 bg-white/80 px-4 py-2 shadow-sm">Free to start</span>
                   <span className="rounded-full border border-slate-200 bg-white/80 px-4 py-2 shadow-sm">
-                    {previewPlans ? `${previewPlans[1].trialDays}-day Pro trial` : "Pro trial available"}
+                    {proPlan && Number(proPlan.trialDays || 0) > 0 ? `${proPlan.trialDays}-day Pro trial` : "Pro trial available"}
                   </span>
                   <span className="rounded-full border border-slate-200 bg-white/80 px-4 py-2 shadow-sm">Instant upgrades</span>
                 </div>
@@ -266,7 +242,7 @@ export default function Pricing() {
                       </div>
                       {previewPlans ? (
                         <span className="text-sm font-semibold text-slate-700">
-                          {formatPrice(resolveCyclePrice(previewPlans[0], "monthly"), previewPlans[0].currency)}
+                          {formatCurrencyAmount(resolveCyclePrice(previewPlans[0], "monthly"), previewPlans[0].currency)}
                         </span>
                       ) : (
                         <span className="text-sm font-semibold text-slate-500">From admin config</span>
@@ -279,7 +255,7 @@ export default function Pricing() {
                       </div>
                       {previewPlans ? (
                         <span className="text-sm font-semibold text-slate-700">
-                          {formatPrice(resolveCyclePrice(previewPlans[1], "monthly"), previewPlans[1].currency)}
+                          {formatCurrencyAmount(resolveCyclePrice(previewPlans[1], "monthly"), previewPlans[1].currency)}
                         </span>
                       ) : (
                         <span className="text-sm font-semibold text-slate-500">From admin config</span>
@@ -292,7 +268,7 @@ export default function Pricing() {
                       </div>
                       {previewPlans ? (
                         <span className="text-sm font-semibold text-slate-700">
-                          {formatPrice(resolveCyclePrice(previewPlans[2], "monthly"), previewPlans[2].currency)}
+                          {formatCurrencyAmount(resolveCyclePrice(previewPlans[2], "monthly"), previewPlans[2].currency)}
                         </span>
                       ) : (
                         <span className="text-sm font-semibold text-slate-500">From admin config</span>
@@ -308,10 +284,22 @@ export default function Pricing() {
 
         <section className="mx-auto max-w-7xl px-4 pb-10 sm:px-6 lg:px-8">
           <div className="mb-10 flex w-full justify-center">
-            <div className="flex w-full max-w-[420px] items-center rounded-full border border-slate-200/80 bg-white/90 p-1.5 shadow-[0_12px_30px_rgba(15,23,42,0.06)] backdrop-blur">
+            <div className="flex w-full max-w-105 items-center rounded-full border border-slate-200/80 bg-white/90 p-1.5 shadow-[0_12px_30px_rgba(15,23,42,0.06)] backdrop-blur">
               <button
                 type="button"
-                onClick={() => setBillingCycle("monthly")}
+                onClick={() => {
+                  setBillingCycle("monthly");
+                  trackPricingEventSafe({
+                    eventName: "pricing_compare_interaction",
+                    pageContext: "public_pricing_page",
+                    currentPlan: "FREE",
+                    source: "public",
+                    metadata: {
+                      interaction: "billing_cycle_toggle",
+                      selected_cycle: "monthly",
+                    },
+                  });
+                }}
                 className={`flex-1 rounded-full px-5 py-1.5 text-center text-sm transition-colors ${
                   billingCycle === "monthly"
                     ? "border border-slate-200 bg-white text-slate-900 shadow-sm"
@@ -322,7 +310,19 @@ export default function Pricing() {
               </button>
               <button
                 type="button"
-                onClick={() => setBillingCycle("yearly")}
+                onClick={() => {
+                  setBillingCycle("yearly");
+                  trackPricingEventSafe({
+                    eventName: "pricing_compare_interaction",
+                    pageContext: "public_pricing_page",
+                    currentPlan: "FREE",
+                    source: "public",
+                    metadata: {
+                      interaction: "billing_cycle_toggle",
+                      selected_cycle: "yearly",
+                    },
+                  });
+                }}
                 className={`flex-1 rounded-full px-5 py-1.5 text-center text-sm transition-colors ${
                   billingCycle === "yearly"
                     ? "border border-slate-200 bg-white text-slate-900 shadow-sm"
@@ -348,11 +348,11 @@ export default function Pricing() {
                   <p className="text-sm font-semibold uppercase tracking-[0.18em] text-cyan-600">Compare plan features</p>
                   <h2 className="mt-2 text-2xl font-bold text-slate-950">Simple side-by-side comparison</h2>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                    This table is managed from admin for marketing, while plan pricing still comes from real billing configuration.
+                    These feature limits are pulled from the same billing configuration shown on the homepage pricing cards.
                   </p>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[680px]">
+                  <table className="w-full min-w-170">
                     <thead className="bg-slate-50/80">
                       <tr>
                         <th className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -363,7 +363,7 @@ export default function Pricing() {
                             key={`head-${plan.id}`}
                             className="px-6 py-4 text-center text-xs font-semibold uppercase tracking-[0.18em] text-slate-500"
                           >
-                            {plan.name}
+                            {plan.displayName || plan.name}
                           </th>
                         ))}
                       </tr>
@@ -384,7 +384,25 @@ export default function Pricing() {
                 </div>
               </div>
 
-              <div className="mt-10 rounded-[28px] border border-slate-200/80 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-800 px-6 py-8 text-white shadow-[0_20px_60px_rgba(15,23,42,0.2)] sm:px-8">
+              <section className="mt-10">
+                <div className="mb-5">
+                  <p className="text-sm font-semibold uppercase tracking-[0.18em] text-cyan-600">Pricing FAQ</p>
+                  <h2 className="mt-2 text-2xl font-bold text-slate-950">Answers before you choose a plan</h2>
+                </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {faqItems.map((item) => (
+                    <article
+                      key={item.question}
+                      className="rounded-3xl border border-white/70 bg-white/90 p-6 shadow-[0_18px_50px_rgba(15,23,42,0.06)]"
+                    >
+                      <h3 className="text-base font-semibold text-slate-950 sm:text-lg">{item.question}</h3>
+                      <p className="mt-2 text-sm leading-7 text-slate-600">{item.answer}</p>
+                    </article>
+                  ))}
+                </div>
+              </section>
+
+              <div className="mt-10 rounded-[28px] border border-slate-200/80 bg-linear-to-r from-slate-950 via-slate-900 to-slate-800 px-6 py-8 text-white shadow-[0_20px_60px_rgba(15,23,42,0.2)] sm:px-8">
                 <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
                   <div>
                     <p className="text-sm font-semibold uppercase tracking-[0.18em] text-cyan-300">Need more control?</p>

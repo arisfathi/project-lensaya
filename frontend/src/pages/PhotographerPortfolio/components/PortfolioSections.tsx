@@ -1,5 +1,9 @@
 import { Check, ChevronLeft, ChevronRight, MessageCircle, Share2 } from "lucide-react";
-import type { RefObject } from "react";
+import { useMemo, useState, type CSSProperties, type RefObject } from "react";
+import { Pagination } from "swiper/modules";
+import { Swiper, SwiperSlide } from "swiper/react";
+import "swiper/css";
+import "swiper/css/pagination";
 import { ImageWithFallback } from "../../../components/figma/ImageWithFallback";
 import { formatDateLabel, formatPackagePrice, isBookedAvailabilityStatus, toAvailabilityStatusLabel } from "../utils";
 import type { AvailabilityDayStatus, HeroSocialLink, PublicPackage, PublicPortfolioItem, PublicService } from "../types";
@@ -309,6 +313,25 @@ type PackagesSectionProps = {
 };
 
 export function PackagesSection({ currentPackages, selectedPackageId, onPackageSelect }: PackagesSectionProps) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [hasInteracted, setHasInteracted] = useState(false);
+
+  const initialSlide = useMemo(() => {
+    if (!selectedPackageId) return 0;
+    const index = currentPackages.findIndex((item) => item.id === selectedPackageId);
+    return Math.max(0, index);
+  }, [currentPackages, selectedPackageId]);
+
+  const swiperStyle = useMemo(
+    () =>
+      ({
+        "--swiper-pagination-color": "var(--theme-color)",
+        "--swiper-pagination-bullet-inactive-color": "rgba(15, 23, 42, 0.25)",
+        "--swiper-pagination-bullet-inactive-opacity": "1",
+      }) as CSSProperties,
+    []
+  );
+
   return (
     <section id="packages" className="py-12 sm:py-16 bg-[var(--theme-section-bg)]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
@@ -316,42 +339,138 @@ export function PackagesSection({ currentPackages, selectedPackageId, onPackageS
         {currentPackages.length === 0 ? (
           <p className="text-center text-slate-600">No packages published for this service.</p>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {currentPackages.map((pkg) => (
-              <div
-                key={pkg.id}
-                onClick={() => onPackageSelect(pkg)}
-                className={`bg-white/80 backdrop-blur-sm rounded-xl p-6 border-2 cursor-pointer transition-all ${
-                  selectedPackageId === pkg.id ? "border-[var(--theme-color)] shadow-lg scale-105" : "border-[var(--theme-color-border)] hover:border-[var(--theme-color)] hover:shadow-md"
-                }`}
-              >
-                <div className="mb-4">
-                  <h3 className="text-xl font-bold text-slate-900 mb-2">{pkg.name}</h3>
-                  <div className="flex items-baseline gap-1 mb-1">
-                    <span className="text-3xl font-bold text-[var(--theme-color)]">{formatPackagePrice(pkg)}</span>
+          <>
+            {/* Mobile: swipeable cards */}
+            <div className="md:hidden">
+              <div className="relative">
+                {currentPackages.length > 1 && !hasInteracted ? (
+                  <div className="pointer-events-none absolute inset-x-0 top-1/2 z-10 -translate-y-1/2">
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2">
+                      <div className="h-18 w-14 bg-gradient-to-r from-[var(--theme-section-bg)] to-transparent" />
+                      <div className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full border border-[var(--theme-color-border)] bg-white/80 p-2 shadow-sm backdrop-blur animate-[pulse_2.2s_ease-in-out_infinite]">
+                        <ChevronLeft className="h-5 w-5 text-slate-600" />
+                      </div>
+                    </div>
+
+                    <div className="absolute right-0 top-1/2 -translate-y-1/2">
+                      <div className="h-18 w-14 bg-gradient-to-l from-[var(--theme-section-bg)] to-transparent" />
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full border border-[var(--theme-color-border)] bg-white/80 p-2 shadow-sm backdrop-blur animate-[pulse_2.2s_ease-in-out_infinite]">
+                        <ChevronRight className="h-5 w-5 text-slate-600" />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-center">
+                      <div className="rounded-full border border-[var(--theme-color-border)] bg-white/85 px-3 py-1 text-xs font-semibold text-slate-600 shadow-sm backdrop-blur">
+                        Swipe to see more
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-sm text-slate-600">{pkg.duration}</p>
-                </div>
+                ) : null}
 
-                <ul className="space-y-3 mb-6">
-                  {(pkg.features || []).map((feature) => (
-                    <li key={`${pkg.id}-${feature}`} className="flex items-start gap-2 text-sm text-slate-700">
-                      <Check className="w-4 h-4 text-[var(--theme-color)] flex-shrink-0 mt-0.5" />
-                      <span>{feature}</span>
-                    </li>
-                  ))}
-                </ul>
+                <Swiper
+                  className="!pb-10"
+                  modules={[Pagination]}
+                  pagination={{ clickable: true }}
+                  centeredSlides
+                  spaceBetween={16}
+                  slidesPerView={1.08}
+                  initialSlide={initialSlide}
+                  style={swiperStyle}
+                  speed={350}
+                  grabCursor
+                  onSwiper={(swiper) => setActiveIndex(swiper.activeIndex)}
+                  onTouchStart={() => setHasInteracted(true)}
+                  onSlideChange={(swiper) => {
+                    setHasInteracted(true);
+                    setActiveIndex(swiper.activeIndex);
+                  }}
+                >
+                  {currentPackages.map((pkg, index) => {
+                    const isSelected = selectedPackageId === pkg.id;
+                    const isActive = index === activeIndex;
 
+                    return (
+                      <SwiperSlide key={pkg.id} className="flex justify-center px-1">
+                        <div
+                          onClick={() => onPackageSelect(pkg)}
+                          className={`w-full max-w-sm bg-white/90 backdrop-blur-sm rounded-2xl p-6 border-2 cursor-pointer transition-transform duration-300 ease-out ${
+                            isSelected
+                              ? "border-[var(--theme-color)] shadow-lg"
+                              : "border-[var(--theme-color-border)] shadow-sm"
+                          } ${isActive ? "scale-[1.02]" : "scale-[0.98] opacity-90"}`}
+                        >
+                          <div className="mb-4">
+                            <h3 className="text-xl font-bold text-slate-900 mb-2">{pkg.name}</h3>
+                            <div className="flex items-baseline gap-1 mb-1">
+                              <span className="text-3xl font-bold text-[var(--theme-color)]">{formatPackagePrice(pkg)}</span>
+                            </div>
+                            <p className="text-sm text-slate-600">{pkg.duration}</p>
+                          </div>
+
+                          <ul className="space-y-3 mb-6">
+                            {(pkg.features || []).map((feature) => (
+                              <li key={`${pkg.id}-${feature}`} className="flex items-start gap-2 text-sm text-slate-700">
+                                <Check className="w-4 h-4 text-[var(--theme-color)] flex-shrink-0 mt-0.5" />
+                                <span>{feature}</span>
+                              </li>
+                            ))}
+                          </ul>
+
+                          <div
+                            className={`px-4 py-2 rounded-lg text-center font-medium transition-colors ${
+                              isSelected ? "bg-[var(--theme-color)] text-white" : "bg-gray-100 text-slate-600"
+                            }`}
+                          >
+                            {isSelected ? "Selected" : "Select Package"}
+                          </div>
+                        </div>
+                      </SwiperSlide>
+                    );
+                  })}
+                </Swiper>
+              </div>
+            </div>
+
+            {/* Desktop/tablet: grid */}
+            <div className="hidden md:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
+              {currentPackages.map((pkg) => (
                 <div
-                  className={`px-4 py-2 rounded-lg text-center font-medium transition-colors ${
-                    selectedPackageId === pkg.id ? "bg-[var(--theme-color)] text-white" : "bg-gray-100 text-slate-600"
+                  key={pkg.id}
+                  onClick={() => onPackageSelect(pkg)}
+                  className={`bg-white/80 backdrop-blur-sm rounded-xl p-6 border-2 cursor-pointer transition-all ${
+                    selectedPackageId === pkg.id
+                      ? "border-[var(--theme-color)] shadow-lg scale-105"
+                      : "border-[var(--theme-color-border)] hover:border-[var(--theme-color)] hover:shadow-md"
                   }`}
                 >
-                  {selectedPackageId === pkg.id ? "Selected" : "Select Package"}
+                  <div className="mb-4">
+                    <h3 className="text-xl font-bold text-slate-900 mb-2">{pkg.name}</h3>
+                    <div className="flex items-baseline gap-1 mb-1">
+                      <span className="text-3xl font-bold text-[var(--theme-color)]">{formatPackagePrice(pkg)}</span>
+                    </div>
+                    <p className="text-sm text-slate-600">{pkg.duration}</p>
+                  </div>
+
+                  <ul className="space-y-3 mb-6">
+                    {(pkg.features || []).map((feature) => (
+                      <li key={`${pkg.id}-${feature}`} className="flex items-start gap-2 text-sm text-slate-700">
+                        <Check className="w-4 h-4 text-[var(--theme-color)] flex-shrink-0 mt-0.5" />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div
+                    className={`px-4 py-2 rounded-lg text-center font-medium transition-colors ${
+                      selectedPackageId === pkg.id ? "bg-[var(--theme-color)] text-white" : "bg-gray-100 text-slate-600"
+                    }`}
+                  >
+                    {selectedPackageId === pkg.id ? "Selected" : "Select Package"}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
     </section>

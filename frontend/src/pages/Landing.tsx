@@ -5,11 +5,12 @@ import { Hero } from '../components/Hero';
 import { PhotographerPreviews } from '../components/PhotographerPreviews';
 import { Features } from '../components/Features';
 import { Testimonials } from '../components/Testimonials';
-import { Pricing } from '../components/Pricing';
+import Pricing from '../components/Pricing';
 import { DirectoryPreview } from '../components/DirectoryPreview';
 import { CTA } from '../components/CTA';
 import { Footer } from '../components/Footer';
 import { buildAppUrl } from '../lib/platform';
+import { PUBLIC_DIRECTORY_ENABLED } from '../lib/marketingFlags';
 import { useSeoMeta } from '../lib/seo';
 
 export default function Landing() {
@@ -48,7 +49,7 @@ export default function Landing() {
         <Features />
         <Testimonials />
         <Pricing />
-        <DirectoryPreview />
+        {PUBLIC_DIRECTORY_ENABLED ? <DirectoryPreview /> : null}
         <CTA />
       </main>
       <Footer />

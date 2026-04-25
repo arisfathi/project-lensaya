@@ -37,15 +37,14 @@ Source hints:
 - PostgreSQL
 - Redis (for queues; code supports disabled mode with fallbacks in some paths)
 - Cloudflare R2 (uploads and asset storage)
-- CHIP billing credentials (or mock provider when not configured)
-- Optional Stripe webhook secret for Stripe-mode webhook processing
+- Stripe billing credentials (or mock provider when not configured)
 - Optional Sentry DSN
 
 Source hints:
 - backend/src/config/env.js
 - backend/src/config/r2.js
 - backend/src/config/redis.js
-- backend/src/services/chipService.js
+- backend/src/services/stripeService.js
 - backend/src/controllers/billingController.js
 
 ## Build And Start Flow
@@ -99,8 +98,7 @@ Source hints:
 	- /api/v1/billing/webhook
 	- /api/v1/webhooks/payments
 - Raw request body handling is required for signature verification.
-- CHIP webhook secret must be configured for CHIP path.
-- Stripe webhook path requires Stripe secret and stripe-signature handling.
+- Stripe webhook path requires `STRIPE_WEBHOOK_SECRET` and `stripe-signature` handling.
 
 Source hints:
 - backend/src/app.js
@@ -160,3 +158,7 @@ Source hints:
 - Official container/orchestration strategy (Docker/Kubernetes/PM2/systemd not specified).
 - TLS termination and ingress setup for custom domains (code models states but infra implementation is external).
 - Recommended worker scaling policy per queue for production traffic.
+
+## Reference Deployments
+
+- Single Droplet (Docker Compose + Caddy): `docs/deployment-single-droplet.md`

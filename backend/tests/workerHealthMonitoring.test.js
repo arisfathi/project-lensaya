@@ -4,7 +4,6 @@ import request from "supertest";
 
 process.env.NODE_ENV = "test";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "test-secret";
-process.env.CHIP_WEBHOOK_SECRET = process.env.CHIP_WEBHOOK_SECRET || "chip-webhook-secret";
 
 const { app } = await import("../src/app.js");
 const { queueMonitoringService } = await import("../src/services/queueMonitoringService.js");

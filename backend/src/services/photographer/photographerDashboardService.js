@@ -22,6 +22,7 @@ export const photographerDashboardService = {
   async dashboardOverview(userId) {
     const photographer = await getPhotographerByUserId(userId);
     const plan = await planLimitService.getPlanByUserId(userId);
+    const entitlements = planLimitService.toEntitlements(plan);
     const analyticsAccess = buildAnalyticsAccess(plan);
     const now = new Date();
     const trafficDays = 7;
@@ -46,8 +47,25 @@ export const photographerDashboardService = {
         }),
         prisma.booking.count({ where: { photographerId: photographer.id } }),
         getPortfolioViewCategorySeries(photographer.id, metricsStart),
-        planLimitService.getPackagesPerServiceUsage(photographer.id, plan.maxPackages),
+        planLimitService.getPackagesPerServiceUsage(
+          photographer.id,
+          entitlements?.limits?.maxPackagesPerService
+        ),
       ]);
+
+    const [storageUsage] = await Promise.all([
+      prisma.asset.aggregate({
+        where: {
+          photographerId: photographer.id,
+          status: "READY",
+          deletedAt: null,
+        },
+        _sum: { sizeBytes: true },
+      }),
+    ]);
+
+    const storageUsedBytes = Number(storageUsage?._sum?.sizeBytes || 0);
+    const storageUsedGb = Number((storageUsedBytes / (1024 * 1024 * 1024)).toFixed(3));
 
     const trafficBuckets = Array.from({ length: trafficDays }, (_, index) => {
       const date = addDays(trafficStart, index);
@@ -167,10 +185,25 @@ export const photographerDashboardService = {
         trialDays: plan.trialDays,
       },
       usage: {
-        services: { used: serviceCount, limit: plan.maxServices },
-        packages: { used: packageCount, limit: plan.maxPackages },
+        services: { used: serviceCount, limit: entitlements?.limits?.maxServices },
+        packages: {
+          used: packageCount,
+          limit: entitlements?.limits?.maxPackagesPerService,
+        },
         packagesPerService: packagesPerServiceUsage,
-        portfolioImages: { used: portfolioCount, limit: plan.maxPortfolioImages },
+        portfolioImages: {
+          used: portfolioCount,
+          limit: entitlements?.limits?.maxPortfolioImages,
+        },
+        storage: {
+          used: storageUsedGb,
+          usedBytes: storageUsedBytes,
+          limit: entitlements?.limits?.storageGb,
+        },
+        leads: {
+          used: bookingCount,
+          limit: entitlements?.limits?.leadVisibilityLimit,
+        },
       },
     };
   },

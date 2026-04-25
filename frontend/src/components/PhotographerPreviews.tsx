@@ -3,6 +3,7 @@ import { ArrowRight, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { publicApi } from '../lib/api';
+import { PUBLIC_DIRECTORY_ENABLED } from '../lib/marketingFlags';
 import { buildPublicStudioHost, buildPublicStudioUrl } from '../lib/platform';
 
 type FeaturedPhotographer = {
@@ -113,15 +114,17 @@ export function PhotographerPreviews() {
           ))}
         </div>
 
-        <div className="text-center">
-          <Link
-            to="/photographers"
-            className="group inline-flex items-center gap-2 text-lg font-semibold text-cyan-500 transition-colors hover:text-cyan-600"
-          >
-            Explore more portfolios
-            <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
-          </Link>
-        </div>
+        {PUBLIC_DIRECTORY_ENABLED ? (
+          <div className="text-center">
+            <Link
+              to="/photographers"
+              className="group inline-flex items-center gap-2 text-lg font-semibold text-cyan-500 transition-colors hover:text-cyan-600"
+            >
+              Explore more portfolios
+              <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+            </Link>
+          </div>
+        ) : null}
 
         {!loading && errorMessage ? <p className="mt-6 text-center text-sm text-red-600">{errorMessage}</p> : null}
       </div>

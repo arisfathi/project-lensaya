@@ -78,6 +78,9 @@ const writePublicPricingContentStore = async (payload = {}) => {
   const current = await readPublicPricingContentStore();
   const merged = normalizePublicPricingContent(
     {
+      section: payload?.section !== undefined ? payload.section : current.section,
+      faq: payload?.faq !== undefined ? payload.faq : current.faq,
+      upgradeCopy: payload?.upgradeCopy !== undefined ? payload.upgradeCopy : current.upgradeCopy,
       bullets: payload?.bullets !== undefined ? payload.bullets : current.bullets,
       compareRows: payload?.compareRows !== undefined ? payload.compareRows : current.compareRows,
     },

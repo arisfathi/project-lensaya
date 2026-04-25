@@ -14,6 +14,11 @@ const { stripeService } = await import("../src/services/stripeService.js");
 const { hmacSha256 } = await import("../src/utils/crypto.js");
 const { ApiError } = await import("../src/utils/apiError.js");
 
+const buildStripeSignature = (rawBody, timestamp = Math.floor(Date.now() / 1000)) => {
+  const signature = hmacSha256(`${timestamp}.${rawBody}`, process.env.STRIPE_WEBHOOK_SECRET);
+  return { timestamp, signatureHeader: `t=${timestamp},v1=${signature}` };
+};
+
 const withMethodPatches = async (patches, callback) => {
   const originals = patches.map((patch) => ({
     target: patch.target,
@@ -57,12 +62,19 @@ const makeRes = () => {
 
 test("stripeService.verifyWebhook validates Stripe signatures", () => {
   const rawBody = JSON.stringify({ id: "evt_test" });
-  const timestamp = "1711450000";
-  const signature = hmacSha256(`${timestamp}.${rawBody}`, process.env.STRIPE_WEBHOOK_SECRET);
+  const { signatureHeader } = buildStripeSignature(rawBody);
 
-  assert.equal(stripeService.verifyWebhook(rawBody, `t=${timestamp},v1=${signature}`), true);
-  assert.equal(stripeService.verifyWebhook(rawBody, `t=${timestamp},v1=bad_signature`), false);
-  assert.equal(stripeService.verifyWebhook("", `t=${timestamp},v1=${signature}`), false);
+  assert.equal(stripeService.verifyWebhook(rawBody, signatureHeader), true);
+  assert.equal(stripeService.verifyWebhook(rawBody, signatureHeader.replace(/v1=.*/, "v1=bad_signature")), false);
+  assert.equal(stripeService.verifyWebhook("", signatureHeader), false);
+});
+
+test("stripeService.verifyWebhook rejects stale Stripe signatures", () => {
+  const rawBody = JSON.stringify({ id: "evt_stale" });
+  const staleTimestamp = Math.floor(Date.now() / 1000) - 3600;
+  const { signatureHeader } = buildStripeSignature(rawBody, staleTimestamp);
+
+  assert.equal(stripeService.verifyWebhook(rawBody, signatureHeader), false);
 });
 
 test("billingProviderService.createCheckoutSession uses Stripe when configured", async () => {
@@ -120,40 +132,25 @@ test("billingProviderService.createCheckoutSession uses Stripe when configured",
   }
 });
 
-test("billingProviderService.resolveCheckoutProvider defaults to CHIP for Malaysia", () => {
+test("billingProviderService.resolveCheckoutProvider defaults to Stripe", () => {
   const previousProvider = process.env.BILLING_PROVIDER;
   delete process.env.BILLING_PROVIDER;
 
   try {
     const provider = billingProviderService.resolveCheckoutProvider({ country: "MY" });
-    assert.equal(provider, "chip");
+    assert.equal(provider, "stripe");
   } finally {
     process.env.BILLING_PROVIDER = previousProvider;
   }
 });
 
-test("billingProviderService.resolveCheckoutProvider defaults to Stripe outside Malaysia", () => {
+test("billingProviderService.resolveCheckoutProvider respects explicit mock provider", () => {
   const previousProvider = process.env.BILLING_PROVIDER;
-  delete process.env.BILLING_PROVIDER;
+  process.env.BILLING_PROVIDER = "mock";
 
   try {
     const provider = billingProviderService.resolveCheckoutProvider({ country: "US" });
-    assert.equal(provider, "stripe");
-  } finally {
-    process.env.BILLING_PROVIDER = previousProvider;
-  }
-});
-
-test("billingProviderService.resolveCheckoutProvider respects explicit user override", () => {
-  const previousProvider = process.env.BILLING_PROVIDER;
-  process.env.BILLING_PROVIDER = "chip";
-
-  try {
-    const provider = billingProviderService.resolveCheckoutProvider({
-      country: "MY",
-      requestedProvider: "stripe",
-    });
-    assert.equal(provider, "stripe");
+    assert.equal(provider, "mock");
   } finally {
     process.env.BILLING_PROVIDER = previousProvider;
   }
@@ -210,8 +207,7 @@ test("billingController.webhook keeps checkout.session.completed pending until i
     },
   };
   const rawBody = JSON.stringify(payload);
-  const timestamp = "1711450000";
-  const signature = hmacSha256(`${timestamp}.${rawBody}`, process.env.STRIPE_WEBHOOK_SECRET);
+  const { signatureHeader } = buildStripeSignature(rawBody);
 
   let receivedPayload = null;
   const { res } = makeRes();
@@ -233,7 +229,7 @@ test("billingController.webhook keeps checkout.session.completed pending until i
           rawBody,
           body: payload,
           headers: {
-            "stripe-signature": `t=${timestamp},v1=${signature}`,
+            "stripe-signature": signatureHeader,
           },
         },
         res,
@@ -278,8 +274,7 @@ test("billingController.webhook accepts invoice.paid as the final success signal
     },
   };
   const rawBody = JSON.stringify(payload);
-  const timestamp = "1711450000";
-  const signature = hmacSha256(`${timestamp}.${rawBody}`, process.env.STRIPE_WEBHOOK_SECRET);
+  const { signatureHeader } = buildStripeSignature(rawBody);
 
   let receivedPayload = null;
   const { res } = makeRes();
@@ -301,7 +296,7 @@ test("billingController.webhook accepts invoice.paid as the final success signal
           rawBody,
           body: payload,
           headers: {
-            "stripe-signature": `t=${timestamp},v1=${signature}`,
+            "stripe-signature": signatureHeader,
           },
         },
         res,

@@ -1,23 +1,15 @@
 ﻿import { env } from "../config/env.js";
 import { ApiError } from "../utils/apiError.js";
-import { chipService } from "./chipService.js";
 import { stripeService } from "./stripeService.js";
 
 const normalizeProvider = (value = "") => {
   const normalized = String(value || "").trim().toLowerCase();
-  return ["chip", "mock", "stripe"].includes(normalized) ? normalized : "mock";
-};
-
-const normalizeCountryCode = (value = "") => {
-  const normalized = String(value || "").trim().toUpperCase();
-  if (!normalized) return "";
-  if (normalized === "MALAYSIA") return "MY";
-  return normalized;
+  return ["mock", "stripe"].includes(normalized) ? normalized : "mock";
 };
 
 const normalizeConfiguredProvider = (value = "") => {
   const normalized = String(value || "").trim().toLowerCase();
-  return ["chip", "mock", "stripe", "auto"].includes(normalized) ? normalized : "";
+  return ["mock", "stripe", "auto"].includes(normalized) ? normalized : "";
 };
 
 const getFrontendBaseUrl = () => {
@@ -51,7 +43,6 @@ const mapRuntimeProvider = (rawProvider, providerSubscriptionId = "") => {
   const normalizedProvider = String(rawProvider || "").trim().toUpperCase();
   const subscriptionId = String(providerSubscriptionId || "").trim().toLowerCase();
 
-  if (normalizedProvider === "CHIP") return "chip";
   if (normalizedProvider === "OTHER" && subscriptionId.startsWith("mock_")) return "mock";
   if (normalizedProvider === "MANUAL") return "manual";
   if (normalizedProvider === "STRIPE") return "stripe";
@@ -71,22 +62,21 @@ export const billingProviderService = {
       return normalizeProvider(envConfiguredProvider);
     }
 
-    return "mock";
+    return "stripe";
   },
 
   resolveCheckoutProvider({ country = "", requestedProvider = "" } = {}) {
-    const normalizedRequestedProvider = normalizeConfiguredProvider(requestedProvider);
-    if (["chip", "stripe"].includes(normalizedRequestedProvider)) {
-      return normalizedRequestedProvider;
-    }
-
     const configuredProvider = normalizeConfiguredProvider(process.env.BILLING_PROVIDER);
-    if (["chip", "stripe", "mock"].includes(configuredProvider)) {
+    if (["stripe", "mock"].includes(configuredProvider)) {
       return configuredProvider;
     }
 
-    const countryCode = normalizeCountryCode(country);
-    return countryCode === "MY" ? "chip" : "stripe";
+    const normalizedRequestedProvider = normalizeConfiguredProvider(requestedProvider);
+    if (["stripe"].includes(normalizedRequestedProvider)) {
+      return normalizedRequestedProvider;
+    }
+
+    return "stripe";
   },
 
   isMockMode() {
@@ -106,23 +96,6 @@ export const billingProviderService = {
     metadata = {},
   }) {
     const resolvedProvider = normalizeProvider(provider || this.resolveConfiguredProvider());
-
-    if (resolvedProvider === "chip") {
-      const result = await chipService.createCheckoutSession({
-        targetPlanId,
-        amountCents,
-        currency,
-        successUrl,
-        cancelUrl,
-        metadata,
-      });
-
-      return {
-        provider: resolvedProvider,
-        checkoutUrl: result.checkoutUrl,
-        sessionId: result.sessionId,
-      };
-    }
 
     if (resolvedProvider === "stripe") {
       const result = await stripeService.createCheckoutSession({

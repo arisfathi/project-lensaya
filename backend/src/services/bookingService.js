@@ -84,8 +84,8 @@ const buildBookedSlotConflictWhere = ({ photographerId, dayStart, dayEnd, prefer
 const resolveBookingConflictMessage = (preferredTime) =>
   preferredTime ? "Selected time is already booked" : "Selected date is already booked";
 
-const LEAD_FILTERS_LOCKED_MESSAGE = "Lead filters are available on Pro and Studio plans.";
-const LEAD_EXPORT_LOCKED_MESSAGE = "Lead export is available on Pro and Studio plans.";
+const LEAD_FILTERS_LOCKED_MESSAGE = "Inquiry filters are not enabled on your current plan.";
+const LEAD_EXPORT_LOCKED_MESSAGE = "Inquiry export is not enabled on your current plan.";
 const normalizeDateQuery = (value) => {
   if (!value) return null;
   const date = new Date(value);
@@ -855,7 +855,8 @@ export const bookingService = {
     }
 
     if (isUsingLeadFilters && !leadFeatures.filters) {
-      throw new ApiError(403, LEAD_FILTERS_LOCKED_MESSAGE);
+      const upgradeLabel = leadFeatures?.upgradeTarget ? ` Upgrade to ${leadFeatures.upgradeTarget} to unlock this.` : "";
+      throw new ApiError(403, `${LEAD_FILTERS_LOCKED_MESSAGE}${upgradeLabel}`);
     }
 
     const rawFromDate = normalizeDateQuery(requestedFilters.from);
@@ -955,7 +956,8 @@ export const bookingService = {
     }
 
     if (!leadFeatures.export) {
-      throw new ApiError(403, LEAD_EXPORT_LOCKED_MESSAGE);
+      const upgradeLabel = leadFeatures?.upgradeTarget ? ` Upgrade to ${leadFeatures.upgradeTarget} to unlock this.` : "";
+      throw new ApiError(403, `${LEAD_EXPORT_LOCKED_MESSAGE}${upgradeLabel}`);
     }
 
     const requestedFilters = {

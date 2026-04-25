@@ -12,6 +12,7 @@ import { enqueueWelcomeEmail, enqueueVerificationEmail } from "../jobs/emailQueu
 import { randomCode, sha256 } from "../utils/crypto.js";
 import { referralService } from "./referralService.js";
 import { planLimitService } from "./planLimitService.js";
+import { appleService } from "./appleService.js";
 
 const googleClient = env.googleClientId ? new OAuth2Client(env.googleClientId) : null;
 const REFERRAL_PREFIX = "REF-";
@@ -465,6 +466,105 @@ const handleGoogleLogin = async ({ googleProfile, referralCode } = {}) => {
   return authResponse(user);
 };
 
+
+const handleAppleLogin = async ({ appleProfile, fullName, referralCode } = {}) => {
+  const appleSub = appleProfile?.sub || null;
+  const email = normalizeEmail(appleProfile?.email || "");
+  const emailVerifiedToken = appleProfile?.email_verified;
+  const isEmailVerified =
+    emailVerifiedToken === true || String(emailVerifiedToken || "").trim().toLowerCase() === "true";
+
+  if (!appleSub) {
+    throw new ApiError(401, "Apple token invalid");
+  }
+
+  const now = new Date();
+
+  const { user, isNewAccount } = await prisma.$transaction(async (tx) => {
+    let user = await tx.user.findUnique({
+      where: { appleId: appleSub },
+      include: { photographer: true },
+    });
+
+    if (!user && email) {
+      user = await tx.user.findUnique({
+        where: { email },
+        include: { photographer: true },
+      });
+    }
+
+    let created = false;
+    const wasUnverified = Boolean(user && !user.emailVerifiedAt);
+
+    if (!user) {
+      if (!email) {
+        throw new ApiError(400, "Apple sign-in did not provide an email address");
+      }
+
+      user = await tx.user.create({
+        data: {
+          email,
+          fullName: (fullName || email).slice(0, 191),
+          appleId: appleSub,
+          emailVerifiedAt: isEmailVerified ? now : null,
+          role: "PHOTOGRAPHER",
+          status: "ACTIVE",
+          lastLoginAt: now,
+        },
+        include: { photographer: true },
+      });
+      created = true;
+
+      const photographer = await ensurePhotographerProfile(user, tx);
+      await initializeDefaultSubscription({
+        tx,
+        userId: user.id,
+        photographerId: photographer?.id || null,
+      });
+
+      await markReferralSignedUpTx({
+        tx,
+        referralCode,
+        referredUserId: user.id,
+        referredEmail: user.email,
+      });
+    }
+
+    if (isLoginBlockedStatus(user.status)) {
+      throw new ApiError(403, "Account is not allowed to log in");
+    }
+
+    const normalizedName = String(fullName || "").trim().slice(0, 191);
+
+    user = await tx.user.update({
+      where: { id: user.id },
+      data: {
+        lastLoginAt: now,
+        ...(appleSub && user.appleId !== appleSub ? { appleId: appleSub } : {}),
+        ...(wasUnverified && isEmailVerified ? { emailVerifiedAt: now } : {}),
+        ...(normalizedName && !user.fullName ? { fullName: normalizedName } : {}),
+      },
+      include: { photographer: true },
+    });
+
+    if (created || (wasUnverified && isEmailVerified)) {
+      await grantReferralVerificationTrialTx(tx, user.id);
+    }
+
+    return { user, isNewAccount: created };
+  });
+
+  if (isNewAccount) {
+    dispatchWelcomeEmailAsync({
+      email: user.email,
+      fullName: user.fullName,
+      requestId: null,
+    });
+  }
+
+  return authResponse(user);
+};
+
 const dispatchWelcomeEmailAsync = ({ email, fullName, requestId = null }) => {
   if (!email) return;
 
@@ -611,6 +711,7 @@ export const authService = {
   },
 
   handleGoogleLogin,
+  handleAppleLogin,
 
   async googleAuth({ idToken, referralCode } = {}) {
     if (!googleClient) throw new ApiError(500, "GOOGLE_CLIENT_ID not configured");
@@ -622,6 +723,35 @@ export const authService = {
     });
     const payload = ticket.getPayload();
     return handleGoogleLogin({ googleProfile: payload, referralCode });
+  },
+  async appleAuth({ idToken, code, fullName, referralCode } = {}) {
+    if (!env.appleAuth?.enabled) {
+      throw new ApiError(404, "Apple sign-in is not enabled");
+    }
+
+    const normalizedName = String(fullName || "").trim().slice(0, 191) || null;
+
+    let profile = null;
+    if (env.appleAuth?.tokenExchangeEnabled) {
+      if (!code) {
+        throw new ApiError(400, "Missing Apple authorization code");
+      }
+
+      const tokenResponse = await appleService.exchangeAuthorizationCode(code);
+      const exchangedIdToken = String(tokenResponse?.id_token || "").trim();
+      if (!exchangedIdToken) {
+        throw new ApiError(401, "Apple sign-in failed");
+      }
+
+      profile = await appleService.verifyIdToken(exchangedIdToken);
+    } else {
+      if (!idToken) {
+        throw new ApiError(400, "Missing Apple token");
+      }
+      profile = await appleService.verifyIdToken(idToken);
+    }
+
+    return handleAppleLogin({ appleProfile: profile, fullName: normalizedName, referralCode });
   },
 
   async refresh({ refreshToken }) {
@@ -731,6 +861,7 @@ export const authService = {
     if (isLoginBlockedStatus(user.status)) throw new ApiError(403, "Account is not allowed to log in");
 
     const plan = await planLimitService.getPlanByUserId(user.id);
+    const entitlements = planLimitService.toEntitlements(plan);
     const leadFeatures = planLimitService.getLeadFeatureAccess(plan);
     const planLimits = planLimitService.mapPlanLimits(plan);
 
@@ -743,13 +874,16 @@ export const authService = {
       username: user.photographer?.username || user.username,
       plan: plan?.name || (user.photographer ? "FREE" : null),
       status: user.status,
+      entitlements,
       leadFeatures,
       planFeatures: {
         teamSectionTools: Boolean(planLimits.teamSectionTools),
+        hideBrandingEnabled: Boolean(entitlements?.features?.hideBrandingEnabled),
+        customDomainEnabled: Boolean(entitlements?.features?.customDomainEnabled),
+        analyticsEnabled: Boolean(entitlements?.features?.analyticsEnabled),
       },
     };
   },
 };
-
 
 

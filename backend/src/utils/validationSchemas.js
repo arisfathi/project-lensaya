@@ -1,4 +1,4 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 
 export const emptySchema = z.object({}).passthrough();
 export const emptyQuerySchema = z.object({}).passthrough();
@@ -98,6 +98,17 @@ export const googleSchema = z.object({
   idToken: z.string().min(10),
   referralCode: z.string().min(3).max(64).optional(),
 });
+
+export const appleSchema = z
+  .object({
+    idToken: z.string().min(10).optional(),
+    code: z.string().min(6).optional(),
+    fullName: z.string().min(2).max(191).optional(),
+    referralCode: z.string().min(3).max(64).optional(),
+  })
+  .refine((value) => Boolean(value.idToken || value.code), {
+    message: "Either idToken or code is required",
+  });
 
 export const forgotSchema = z.object({ email: z.string().email() });
 export const resetSchema = z.object({ token: z.string().min(6), newPassword: z.string().min(8).max(128) });
@@ -331,7 +342,6 @@ export const avatarUpdateSchema = z.object({ assetId: z.string().uuid() });
 export const changePlanSchema = z.object({
   targetPlanId: z.enum(["FREE", "PRO", "STUDIO"]),
   billingCycle: z.enum(["monthly", "yearly"]).optional(),
-  paymentProvider: z.enum(["chip", "stripe"]).optional(),
   successUrl: z.string().url().optional(),
   cancelUrl: z.string().url().optional(),
   referralCode: z.string().max(64).optional(),
@@ -372,38 +382,6 @@ export const publicBookingCreateSchema = z.object({
   source: z.enum(["WEBSITE", "WHATSAPP", "INSTAGRAM", "FACEBOOK", "TIKTOK", "DIRECT", "OTHER"]),
 });
 
-const webhookIdentifierSchema = z.union([z.string(), z.number()]).optional();
-
-const webhookCorePayloadSchema = z
-  .object({
-    id: webhookIdentifierSchema,
-    transaction_id: webhookIdentifierSchema,
-    transactionId: webhookIdentifierSchema,
-    purchase_id: webhookIdentifierSchema,
-    purchaseId: webhookIdentifierSchema,
-    status: z.string().trim().min(1).max(64),
-    amount: z.coerce.number().finite().nonnegative().optional(),
-    currency: z.string().trim().min(2).max(16).optional(),
-    metadata: z.record(z.string(), z.any()).nullable().optional(),
-  })
-  .passthrough()
-  .superRefine((value, ctx) => {
-    const hasIdentifier = [
-      value.id,
-      value.transaction_id,
-      value.transactionId,
-      value.purchase_id,
-      value.purchaseId,
-    ].some((item) => item !== undefined && item !== null && String(item).trim() !== "");
-
-    if (!hasIdentifier) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Webhook payload requires at least one identifier field",
-      });
-    }
-  });
-
 const stripeWebhookEventSchema = z
   .object({
     id: z.string().min(1).max(255),
@@ -417,19 +395,7 @@ const stripeWebhookEventSchema = z
   })
   .passthrough();
 
-const chipWebhookEnvelopeSchema = z
-  .object({ data: webhookCorePayloadSchema })
-  .passthrough()
-  .transform((value) => ({
-    ...value.data,
-    _envelope: value,
-  }));
-
-export const webhookPayloadSchema = z.union([
-  webhookCorePayloadSchema,
-  chipWebhookEnvelopeSchema,
-  stripeWebhookEventSchema,
-]);
+export const webhookPayloadSchema = stripeWebhookEventSchema;
 
 export const clientErrorSchema = z.object({
   type: z.enum(["error", "unhandledrejection"]).optional(),
@@ -461,15 +427,92 @@ export const emailSettingsSchema = z.object({
   weeklyReport: z.boolean(),
 });
 
-export const planLimitsSchema = z.object({
-  free: z.any().optional(),
-  pro: z.any().optional(),
-  studio: z.any().optional(),
-});
+const leadChannelsSchema = z
+  .object({
+    whatsapp: z.boolean().optional(),
+    email: z.boolean().optional(),
+  })
+  .passthrough();
+
+const planEntitlementPatchSchema = z
+  .object({
+    services: z.number().int().min(-1).max(100000).optional(),
+    portfolioImages: z.number().int().min(-1).max(1000000).optional(),
+    portfolioPhotos: z.number().int().min(-1).max(1000000).optional(),
+    packages: z.number().int().min(-1).max(100000).optional(),
+    packagesPerService: z.number().int().min(-1).max(100000).optional(),
+    packageFeatures: z.number().int().min(-1).max(100000).optional(),
+    maxPackageFeatures: z.number().int().min(-1).max(100000).optional(),
+    storage: z.number().int().min(-1).max(100000).optional(),
+    storageGb: z.number().int().min(-1).max(100000).optional(),
+    leadHistoryDays: z.number().int().min(-1).max(3650).optional(),
+    leadVisibilityLimit: z.number().int().min(-1).max(10000000).optional(),
+    leadTemplatesCount: z.number().int().min(-1).max(10000).optional(),
+    teamSeats: z.number().int().min(-1).max(5000).optional(),
+    customDomain: z.boolean().optional(),
+    customDomainEnabled: z.boolean().optional(),
+    analyticsTools: z.boolean().optional(),
+    analyticsEnabled: z.boolean().optional(),
+    hideBrandingEnabled: z.boolean().optional(),
+    leadFiltersEnabled: z.boolean().optional(),
+    leadExportEnabled: z.boolean().optional(),
+    leadRemindersEnabled: z.boolean().optional(),
+    leadAdvancedAnalyticsEnabled: z.boolean().optional(),
+    teamSectionTools: z.boolean().optional(),
+    teamToolsEnabled: z.boolean().optional(),
+    isVisible: z.boolean().optional(),
+    isActive: z.boolean().optional(),
+    isMostPopular: z.boolean().optional(),
+    analyticsMode: z.enum(["NONE", "BASIC", "ADVANCED"]).optional(),
+    leadAnalyticsMode: z.enum(["NONE", "BASIC", "ADVANCED"]).optional(),
+    supportTier: z.enum(["STANDARD", "PRIORITY"]).optional(),
+    brandingMode: z.enum(["FORCED_LENSAYA", "REMOVABLE"]).optional(),
+    leadChannels: leadChannelsSchema.optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field is required",
+  });
+
+export const planLimitsSchema = z
+  .object({
+    free: planEntitlementPatchSchema.optional(),
+    pro: planEntitlementPatchSchema.optional(),
+    studio: planEntitlementPatchSchema.optional(),
+  })
+  .refine((value) => value.free !== undefined || value.pro !== undefined || value.studio !== undefined, {
+    message: "At least one plan payload is required",
+  });
 const publicPricingPlanBulletsSchema = z.object({
   FREE: z.array(z.string().trim().min(1).max(160)).max(12),
   PRO: z.array(z.string().trim().min(1).max(160)).max(12),
   STUDIO: z.array(z.string().trim().min(1).max(160)).max(12),
+});
+
+const publicPricingSectionSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  subtitle: z.string().trim().min(1).max(300),
+});
+
+const publicPricingFaqItemSchema = z.object({
+  question: z.string().trim().min(1).max(120),
+  answer: z.string().trim().min(1).max(500),
+});
+
+const publicPricingUpgradeTransitionSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  description: z.string().trim().min(1).max(320),
+});
+
+const publicPricingUpgradeCopySchema = z.object({
+  transitions: z
+    .object({
+      PRO: publicPricingUpgradeTransitionSchema,
+      STUDIO: publicPricingUpgradeTransitionSchema,
+    })
+    .optional(),
+  warning: z.string().trim().min(1).max(180).optional(),
+  blocked: z.string().trim().min(1).max(180).optional(),
+  empty: z.string().trim().min(1).max(180).optional(),
 });
 
 const publicPricingCompareRowSchema = z.object({
@@ -485,16 +528,38 @@ const publicPricingCompareRowSchema = z.object({
 
 export const publicPricingContentPatchSchema = z
   .object({
+    section: publicPricingSectionSchema.optional(),
+    faq: z.array(publicPricingFaqItemSchema).max(10).optional(),
+    upgradeCopy: publicPricingUpgradeCopySchema.optional(),
     bullets: publicPricingPlanBulletsSchema.optional(),
     compareRows: z.array(publicPricingCompareRowSchema).max(30).optional(),
   })
-  .refine((value) => value.bullets !== undefined || value.compareRows !== undefined, {
+  .refine(
+    (value) =>
+      value.section !== undefined ||
+      value.faq !== undefined ||
+      value.upgradeCopy !== undefined ||
+      value.bullets !== undefined ||
+      value.compareRows !== undefined,
+    {
     message: "At least one field is required",
-  });
+    }
+  );
 
 export const subscriptionPlanPutSchema = z
   .object({
     name: z.string().min(2).max(64).optional(),
+    displayName: z.string().trim().min(1).max(128).optional(),
+    tagline: z.string().trim().max(191).nullable().optional(),
+    subtitle: z.string().trim().max(400).nullable().optional(),
+    badgeText: z.string().trim().max(80).nullable().optional(),
+    ctaText: z.string().trim().max(80).nullable().optional(),
+    monthlyPriceDisplay: z.string().trim().max(80).nullable().optional(),
+    yearlyPriceDisplay: z.string().trim().max(80).nullable().optional(),
+    sortOrder: z.number().int().min(0).max(10000).optional(),
+    isVisible: z.boolean().optional(),
+    isActive: z.boolean().optional(),
+    isMostPopular: z.boolean().optional(),
     price: z.coerce.number().min(0).max(1000000).optional(),
     yearlyPrice: z.coerce.number().min(0).max(1000000).optional(),
     currency: z
@@ -509,11 +574,31 @@ export const subscriptionPlanPutSchema = z
     maxServices: z.number().int().min(-1).max(100000).optional(),
     maxPortfolioImages: z.number().int().min(-1).max(1000000).optional(),
     maxPackages: z.number().int().min(-1).max(100000).optional(),
+    maxPackagesPerService: z.number().int().min(-1).max(100000).optional(),
     maxPackageFeatures: z.number().int().min(-1).max(100000).optional(),
+    maxPackageFeaturesPerPackage: z.number().int().min(-1).max(100000).optional(),
     storageGB: z.number().int().min(-1).max(100000).optional(),
+    storageGb: z.number().int().min(-1).max(100000).optional(),
+    leadHistoryDays: z.number().int().min(-1).max(3650).optional(),
+    leadVisibilityLimit: z.number().int().min(-1).max(10000000).optional(),
+    leadTemplatesCount: z.number().int().min(-1).max(10000).optional(),
+    teamSeats: z.number().int().min(-1).max(5000).optional(),
     customDomain: z.boolean().optional(),
+    customDomainEnabled: z.boolean().optional(),
     analyticsTools: z.boolean().optional(),
+    analyticsEnabled: z.boolean().optional(),
+    hideBrandingEnabled: z.boolean().optional(),
+    leadFiltersEnabled: z.boolean().optional(),
+    leadExportEnabled: z.boolean().optional(),
+    leadRemindersEnabled: z.boolean().optional(),
+    leadAdvancedAnalyticsEnabled: z.boolean().optional(),
     teamSectionTools: z.boolean().optional(),
+    teamToolsEnabled: z.boolean().optional(),
+    analyticsMode: z.enum(["NONE", "BASIC", "ADVANCED"]).optional(),
+    leadAnalyticsMode: z.enum(["NONE", "BASIC", "ADVANCED"]).optional(),
+    supportTier: z.enum(["STANDARD", "PRIORITY"]).optional(),
+    brandingMode: z.enum(["FORCED_LENSAYA", "REMOVABLE"]).optional(),
+    leadChannels: leadChannelsSchema.optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one field is required",
@@ -553,7 +638,6 @@ export const publicContentQuerySchema = z
     limit: z.coerce.number().int().positive().max(100).optional(),
   })
   .passthrough();
-
 
 
 

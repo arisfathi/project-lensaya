@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
 import { Bar, BarChart, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { usePricingContent } from "../../../../hooks/usePricingContent";
+import { resolvePricingUpgradeCopy } from "../../../../lib/pricingContent";
 import { PREVIEW_BAR_WIDTHS } from "../constants";
 import type { PreviewCategoryItem } from "../types";
 
@@ -19,6 +21,9 @@ type TrafficAndCategorySectionProps = {
 };
 
 export function TrafficAndCategorySection({ data, actions }: TrafficAndCategorySectionProps) {
+  const pricingContent = usePricingContent();
+  const upgradeCopy = resolvePricingUpgradeCopy(pricingContent, data.analyticsUpgradeTarget);
+
   return (
     <div className="mb-5 grid gap-4 sm:mb-8 sm:gap-6 lg:grid-cols-2">
       <div className="rounded-2xl border border-slate-200/80 bg-white px-3.5 py-3.5 sm:rounded-xl sm:border-gray-200 sm:p-6 sm:shadow-sm">
@@ -52,7 +57,7 @@ export function TrafficAndCategorySection({ data, actions }: TrafficAndCategoryS
             <p className="mt-1 text-xs text-slate-600 sm:text-sm">
               {data.hasFullAnalyticsAccess
                 ? "See which services or categories are attracting the most attention right now."
-                : `Free shows the leading pattern. ${data.analyticsUpgradeTarget} reveals the exact counts behind the categories that are pulling visitors in.`}
+                : upgradeCopy.description}
             </p>
           </div>
           {!data.hasFullAnalyticsAccess ? (
@@ -85,7 +90,7 @@ export function TrafficAndCategorySection({ data, actions }: TrafficAndCategoryS
             <div className="mt-4 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-xs text-slate-600 sm:mt-6 sm:p-6 sm:text-sm">
               No portfolio views yet.
               <br />
-              Create services and upload portfolio images to start tracking analytics.
+              Create service listings and add portfolio capacity to start tracking analytics.
             </div>
           )
         ) : data.previewCategories.length > 0 ? (

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Save } from "lucide-react";
 import { isValidPhoneNumber } from "react-phone-number-input";
 import "react-phone-number-input/style.css";
@@ -53,7 +53,6 @@ export default function Settings() {
   const [deletingAccount, setDeletingAccount] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
 
   const { logout, refreshUser } = useAuth();
   const { success, error } = useToast();
@@ -161,25 +160,6 @@ export default function Settings() {
       mounted = false;
     };
   }, [error]);
-
-  useEffect(() => {
-    const checkoutStatus = searchParams.get("checkout");
-    if (!checkoutStatus) return;
-
-    if (checkoutStatus === "success") {
-      success("Payment completed. Your subscription is active.");
-    } else if (checkoutStatus === "trial") {
-      success("Trial started successfully.");
-    } else if (checkoutStatus === "failed") {
-      error("Payment failed. Your subscription was not changed.");
-    } else if (checkoutStatus === "canceled") {
-      error("Checkout was canceled. You can try again anytime.");
-    }
-
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.delete("checkout");
-    setSearchParams(nextParams, { replace: true });
-  }, [error, searchParams, setSearchParams, success]);
 
   useEffect(
     () => () => {

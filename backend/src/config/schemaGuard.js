@@ -1,5 +1,17 @@
 import { prisma } from "./prisma.js";
 
+const isConnectionError = (error) => {
+  const message = String(error?.message || "");
+  const code = String(error?.code || "");
+  return (
+    code.toUpperCase() === "ECONNREFUSED" ||
+    code.toUpperCase() === "P1001" ||
+    /ECONNREFUSED/i.test(message) ||
+    /Can't reach database server/i.test(message) ||
+    /Connection refused/i.test(message)
+  );
+};
+
 const REQUIRED_COLUMNS = {
   Photographer: ["location", "city", "country", "specialty", "style", "hideBranding"],
   Booking: ["preferredTime", "notes"],
@@ -43,20 +55,43 @@ const readEnumValues = async (db, enumName) => {
 export const assertSchemaCompatibility = async (db = prisma) => {
   const problems = [];
 
-  for (const [tableName, requiredColumns] of Object.entries(REQUIRED_COLUMNS)) {
-    const existingColumns = await readColumnsForTable(db, tableName);
-    const missing = requiredColumns.filter((column) => !existingColumns.has(column));
-    if (missing.length > 0) {
-      problems.push(`${tableName}: missing columns ${missing.join(", ")}`);
+  try {
+    await db.$connect();
+  } catch (error) {
+    if (isConnectionError(error)) {
+      throw new Error(
+        'Cannot connect to Postgres using DATABASE_URL. Make sure Postgres is running and DATABASE_URL points to the right host/port.\n\n' +
+          'Local dev (Windows/macOS/Linux): start a local Postgres (Docker or native) and confirm it listens on localhost:5432.\n' +
+          'Production (Docker Compose): DATABASE_URL should usually use "db" as the hostname (e.g. postgresql://...@db:5432/...).\n\n' +
+          'Then run migrations: "npx prisma migrate deploy" (or "npm run prisma:migrate").'
+      );
     }
+    throw error;
   }
 
-  for (const [enumName, requiredValues] of Object.entries(REQUIRED_ENUM_VALUES)) {
-    const existingValues = await readEnumValues(db, enumName);
-    const missing = requiredValues.filter((value) => !existingValues.has(value));
-    if (missing.length > 0) {
-      problems.push(`${enumName}: missing enum values ${missing.join(", ")}`);
+  try {
+    for (const [tableName, requiredColumns] of Object.entries(REQUIRED_COLUMNS)) {
+      const existingColumns = await readColumnsForTable(db, tableName);
+      const missing = requiredColumns.filter((column) => !existingColumns.has(column));
+      if (missing.length > 0) {
+        problems.push(`${tableName}: missing columns ${missing.join(", ")}`);
+      }
     }
+
+    for (const [enumName, requiredValues] of Object.entries(REQUIRED_ENUM_VALUES)) {
+      const existingValues = await readEnumValues(db, enumName);
+      const missing = requiredValues.filter((value) => !existingValues.has(value));
+      if (missing.length > 0) {
+        problems.push(`${enumName}: missing enum values ${missing.join(", ")}`);
+      }
+    }
+  } catch (error) {
+    if (isConnectionError(error)) {
+      throw new Error(
+        'Lost connection to Postgres while checking schema compatibility. Verify DATABASE_URL and that Postgres is reachable, then run "npx prisma migrate deploy".'
+      );
+    }
+    throw error;
   }
 
   if (problems.length > 0) {

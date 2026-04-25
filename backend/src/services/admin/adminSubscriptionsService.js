@@ -3,7 +3,18 @@ import { getPagination, buildPagination } from "../../utils/pagination.js";
 import { ApiError } from "../../utils/apiError.js";
 import { planLimitService } from "../planLimitService.js";
 import { PLAN_KEY_BY_NAME, PLAN_NAME_BY_KEY, PLAN_TIERS } from "./adminService.constants.js";
-import { defaultPackageFeatureLimit, toPlanDto, toPlanLimitRecord, toPlanTier } from "./adminService.utils.js";
+import { toPlanDto, toPlanLimitRecord, toPlanTier } from "./adminService.utils.js";
+
+const looksLikeMissingPlanEntitlementTypes = (error) => {
+  const message = String(error?.message || "");
+  const code = String(error?.code || "");
+  if (code === "42704") return true; // undefined_object (e.g. missing enum type)
+
+  return (
+    /type\s+"public\."?(AnalyticsMode|LeadAnalyticsMode|SupportTier|BrandingMode)"?\s+does not exist/i.test(message) ||
+    /type\s+"(AnalyticsMode|LeadAnalyticsMode|SupportTier|BrandingMode)"\s+does not exist/i.test(message)
+  );
+};
 
 export const adminSubscriptionsService = {
   async subscriptionsOverview() {
@@ -68,12 +79,6 @@ export const adminSubscriptionsService = {
       return { updated: true, limits: await getPlanLimits() };
     }
 
-    const [supportsAnalyticsTools, supportsTeamSectionTools, supportsMaxPackageFeatures] = await Promise.all([
-      planLimitService.supportsAnalyticsToolsColumn(),
-      planLimitService.supportsTeamSectionToolsColumn(),
-      planLimitService.supportsMaxPackageFeaturesColumn(),
-    ]);
-
     const updates = entries
       .map(([key, value]) => {
         const payload = value || {};
@@ -83,19 +88,119 @@ export const adminSubscriptionsService = {
             ? { maxPortfolioImages: Number(payload.portfolioImages ?? payload.portfolioPhotos) }
             : {}),
           ...(payload.packages !== undefined || payload.packagesPerService !== undefined
-            ? { maxPackages: Number(payload.packages ?? payload.packagesPerService) }
+            ? {
+                maxPackages: Number(payload.packages ?? payload.packagesPerService),
+                maxPackagesPerService: Number(payload.packages ?? payload.packagesPerService),
+              }
             : {}),
-          ...(supportsMaxPackageFeatures &&
-          (payload.packageFeatures !== undefined || payload.maxPackageFeatures !== undefined)
-            ? { maxPackageFeatures: Number(payload.packageFeatures ?? payload.maxPackageFeatures) }
+          ...(payload.packageFeatures !== undefined || payload.maxPackageFeatures !== undefined
+            ? {
+                maxPackageFeatures: Number(payload.packageFeatures ?? payload.maxPackageFeatures),
+                maxPackageFeaturesPerPackage: Number(
+                  payload.packageFeatures ?? payload.maxPackageFeatures
+                ),
+              }
             : {}),
-          ...(payload.storage !== undefined ? { storageGB: Number(payload.storage) } : {}),
-          ...(payload.customDomain !== undefined ? { customDomain: Boolean(payload.customDomain) } : {}),
-          ...(supportsAnalyticsTools && payload.analyticsTools !== undefined
-            ? { analyticsTools: Boolean(payload.analyticsTools) }
+          ...(payload.storage !== undefined || payload.storageGb !== undefined
+            ? {
+                storageGB: Number(payload.storage ?? payload.storageGb),
+                storageGb: Number(payload.storage ?? payload.storageGb),
+              }
             : {}),
-          ...(supportsTeamSectionTools && payload.teamSectionTools !== undefined
-            ? { teamSectionTools: Boolean(payload.teamSectionTools) }
+          ...(payload.leadHistoryDays !== undefined
+            ? { leadHistoryDays: Number(payload.leadHistoryDays) }
+            : {}),
+          ...(payload.leadVisibilityLimit !== undefined
+            ? { leadVisibilityLimit: Number(payload.leadVisibilityLimit) }
+            : {}),
+          ...(payload.leadTemplatesCount !== undefined
+            ? { leadTemplatesCount: Number(payload.leadTemplatesCount) }
+            : {}),
+          ...(payload.teamSeats !== undefined ? { teamSeats: Number(payload.teamSeats) } : {}),
+          ...(payload.customDomain !== undefined || payload.customDomainEnabled !== undefined
+            ? {
+                customDomain: Boolean(payload.customDomain ?? payload.customDomainEnabled),
+                customDomainEnabled: Boolean(payload.customDomain ?? payload.customDomainEnabled),
+              }
+            : {}),
+          ...(payload.analyticsTools !== undefined || payload.analyticsEnabled !== undefined
+            ? {
+                analyticsTools: Boolean(payload.analyticsTools ?? payload.analyticsEnabled),
+                analyticsEnabled: Boolean(payload.analyticsTools ?? payload.analyticsEnabled),
+              }
+            : {}),
+          ...(payload.hideBrandingEnabled !== undefined
+            ? { hideBrandingEnabled: Boolean(payload.hideBrandingEnabled) }
+            : {}),
+          ...(payload.leadFiltersEnabled !== undefined
+            ? { leadFiltersEnabled: Boolean(payload.leadFiltersEnabled) }
+            : {}),
+          ...(payload.leadExportEnabled !== undefined
+            ? { leadExportEnabled: Boolean(payload.leadExportEnabled) }
+            : {}),
+          ...(payload.leadRemindersEnabled !== undefined
+            ? { leadRemindersEnabled: Boolean(payload.leadRemindersEnabled) }
+            : {}),
+          ...(payload.leadAdvancedAnalyticsEnabled !== undefined
+            ? { leadAdvancedAnalyticsEnabled: Boolean(payload.leadAdvancedAnalyticsEnabled) }
+            : {}),
+          ...(payload.teamSectionTools !== undefined || payload.teamToolsEnabled !== undefined
+            ? {
+                teamSectionTools: Boolean(payload.teamSectionTools ?? payload.teamToolsEnabled),
+                teamToolsEnabled: Boolean(payload.teamSectionTools ?? payload.teamToolsEnabled),
+              }
+            : {}),
+          ...(payload.isVisible !== undefined ? { isVisible: Boolean(payload.isVisible) } : {}),
+          ...(payload.isActive !== undefined ? { isActive: Boolean(payload.isActive) } : {}),
+          ...(payload.isMostPopular !== undefined
+            ? { isMostPopular: Boolean(payload.isMostPopular) }
+            : {}),
+          ...(payload.analyticsMode !== undefined
+            ? { analyticsMode: String(payload.analyticsMode).toUpperCase() }
+            : {}),
+          ...(payload.leadAnalyticsMode !== undefined
+            ? { leadAnalyticsMode: String(payload.leadAnalyticsMode).toUpperCase() }
+            : {}),
+          ...(payload.supportTier !== undefined
+            ? { supportTier: String(payload.supportTier).toUpperCase() }
+            : {}),
+          ...(payload.brandingMode !== undefined
+            ? { brandingMode: String(payload.brandingMode).toUpperCase() }
+            : {}),
+          ...(payload.leadChannels !== undefined ? { leadChannels: payload.leadChannels } : {}),
+          ...(payload.displayName !== undefined ? { displayName: String(payload.displayName) } : {}),
+          ...(payload.tagline !== undefined ? { tagline: payload.tagline ? String(payload.tagline) : null } : {}),
+          ...(payload.subtitle !== undefined
+            ? { subtitle: payload.subtitle ? String(payload.subtitle) : null }
+            : {}),
+          ...(payload.badgeText !== undefined
+            ? { badgeText: payload.badgeText ? String(payload.badgeText) : null }
+            : {}),
+          ...(payload.ctaText !== undefined ? { ctaText: payload.ctaText ? String(payload.ctaText) : null } : {}),
+          ...(payload.monthlyPriceDisplay !== undefined
+            ? {
+                monthlyPriceDisplay: payload.monthlyPriceDisplay
+                  ? String(payload.monthlyPriceDisplay)
+                  : null,
+              }
+            : {}),
+          ...(payload.yearlyPriceDisplay !== undefined
+            ? {
+                yearlyPriceDisplay: payload.yearlyPriceDisplay
+                  ? String(payload.yearlyPriceDisplay)
+                  : null,
+              }
+            : {}),
+          ...(payload.sortOrder !== undefined ? { sortOrder: Number(payload.sortOrder) } : {}),
+          ...(payload.price !== undefined ? { price: Number(payload.price) } : {}),
+          ...(payload.yearlyPrice !== undefined ? { yearlyPrice: Number(payload.yearlyPrice) } : {}),
+          ...(payload.currency !== undefined ? { currency: String(payload.currency).toUpperCase() } : {}),
+          ...(payload.trialDays !== undefined ? { trialDays: Number(payload.trialDays) } : {}),
+          ...(payload.referralReward !== undefined
+            ? { referralReward: Number(payload.referralReward) }
+            : {}),
+          ...(payload.storageCostPerGB !== undefined
+            ? { storageCostPerGB: Number(payload.storageCostPerGB) }
             : {}),
         };
 
@@ -117,10 +222,21 @@ export const adminSubscriptionsService = {
       };
     }
 
-    const results = await prisma.$transaction(updates);
-    const anyMissing = results.some((result) => result.count === 0);
-    if (anyMissing) {
-      throw new ApiError(404, "Subscription plan not found");
+    let results = [];
+    try {
+      results = await prisma.$transaction(updates);
+      const anyMissing = results.some((result) => result.count === 0);
+      if (anyMissing) {
+        throw new ApiError(404, "Subscription plan not found");
+      }
+    } catch (error) {
+      if (looksLikeMissingPlanEntitlementTypes(error)) {
+        throw new ApiError(
+          500,
+          'Database is missing subscription plan entitlement types. Apply the latest Prisma migrations (e.g. run "npm run prisma:migrate:deploy" in `backend/`).'
+        );
+      }
+      throw error;
     }
 
     await planLimitService.invalidatePlanCache();
@@ -136,21 +252,31 @@ export const adminSubscriptionsService = {
     return {
       items: items
         .slice()
-        .sort((a, b) => PLAN_TIERS.indexOf(a.name) - PLAN_TIERS.indexOf(b.name))
+        .sort((a, b) => Number(a.sortOrder ?? PLAN_TIERS.indexOf(a.name)) - Number(b.sortOrder ?? PLAN_TIERS.indexOf(b.name)))
         .map(toPlanDto),
     };
   },
 
   async updatePlan(planId, payload) {
     const existing = await planLimitService.getPlanById(planId);
-    const [supportsAnalyticsTools, supportsTeamSectionTools, supportsMaxPackageFeatures] = await Promise.all([
-      planLimitService.supportsAnalyticsToolsColumn(),
-      planLimitService.supportsTeamSectionToolsColumn(),
-      planLimitService.supportsMaxPackageFeaturesColumn(),
-    ]);
 
     const data = {
       ...(payload.name !== undefined ? { name: String(payload.name).toUpperCase() } : {}),
+      ...(payload.displayName !== undefined ? { displayName: String(payload.displayName) } : {}),
+      ...(payload.tagline !== undefined ? { tagline: payload.tagline ? String(payload.tagline) : null } : {}),
+      ...(payload.subtitle !== undefined ? { subtitle: payload.subtitle ? String(payload.subtitle) : null } : {}),
+      ...(payload.badgeText !== undefined ? { badgeText: payload.badgeText ? String(payload.badgeText) : null } : {}),
+      ...(payload.ctaText !== undefined ? { ctaText: payload.ctaText ? String(payload.ctaText) : null } : {}),
+      ...(payload.monthlyPriceDisplay !== undefined
+        ? { monthlyPriceDisplay: payload.monthlyPriceDisplay ? String(payload.monthlyPriceDisplay) : null }
+        : {}),
+      ...(payload.yearlyPriceDisplay !== undefined
+        ? { yearlyPriceDisplay: payload.yearlyPriceDisplay ? String(payload.yearlyPriceDisplay) : null }
+        : {}),
+      ...(payload.sortOrder !== undefined ? { sortOrder: Number(payload.sortOrder) } : {}),
+      ...(payload.isVisible !== undefined ? { isVisible: Boolean(payload.isVisible) } : {}),
+      ...(payload.isActive !== undefined ? { isActive: Boolean(payload.isActive) } : {}),
+      ...(payload.isMostPopular !== undefined ? { isMostPopular: Boolean(payload.isMostPopular) } : {}),
       ...(payload.price !== undefined ? { price: Number(payload.price) } : {}),
       ...(payload.yearlyPrice !== undefined ? { yearlyPrice: Number(payload.yearlyPrice) } : {}),
       ...(payload.currency !== undefined ? { currency: String(payload.currency).toUpperCase() } : {}),
@@ -159,74 +285,94 @@ export const adminSubscriptionsService = {
       ...(payload.storageCostPerGB !== undefined ? { storageCostPerGB: Number(payload.storageCostPerGB) } : {}),
       ...(payload.maxServices !== undefined ? { maxServices: Number(payload.maxServices) } : {}),
       ...(payload.maxPortfolioImages !== undefined ? { maxPortfolioImages: Number(payload.maxPortfolioImages) } : {}),
-      ...(payload.maxPackages !== undefined ? { maxPackages: Number(payload.maxPackages) } : {}),
-      ...(supportsMaxPackageFeatures && payload.maxPackageFeatures !== undefined
-        ? { maxPackageFeatures: Number(payload.maxPackageFeatures) }
+      ...(payload.maxPackages !== undefined || payload.maxPackagesPerService !== undefined
+        ? {
+            maxPackages: Number(payload.maxPackages ?? payload.maxPackagesPerService),
+            maxPackagesPerService: Number(payload.maxPackages ?? payload.maxPackagesPerService),
+          }
         : {}),
-      ...(payload.storageGB !== undefined ? { storageGB: Number(payload.storageGB) } : {}),
-      ...(payload.customDomain !== undefined ? { customDomain: Boolean(payload.customDomain) } : {}),
-      ...(supportsAnalyticsTools && payload.analyticsTools !== undefined
-        ? { analyticsTools: Boolean(payload.analyticsTools) }
+      ...(payload.maxPackageFeatures !== undefined || payload.maxPackageFeaturesPerPackage !== undefined
+        ? {
+            maxPackageFeatures: Number(
+              payload.maxPackageFeatures ?? payload.maxPackageFeaturesPerPackage
+            ),
+            maxPackageFeaturesPerPackage: Number(
+              payload.maxPackageFeatures ?? payload.maxPackageFeaturesPerPackage
+            ),
+          }
         : {}),
-      ...(supportsTeamSectionTools && payload.teamSectionTools !== undefined
-        ? { teamSectionTools: Boolean(payload.teamSectionTools) }
+      ...(payload.storageGB !== undefined || payload.storageGb !== undefined
+        ? {
+            storageGB: Number(payload.storageGB ?? payload.storageGb),
+            storageGb: Number(payload.storageGB ?? payload.storageGb),
+          }
         : {}),
+      ...(payload.leadHistoryDays !== undefined ? { leadHistoryDays: Number(payload.leadHistoryDays) } : {}),
+      ...(payload.leadVisibilityLimit !== undefined
+        ? { leadVisibilityLimit: Number(payload.leadVisibilityLimit) }
+        : {}),
+      ...(payload.leadTemplatesCount !== undefined
+        ? { leadTemplatesCount: Number(payload.leadTemplatesCount) }
+        : {}),
+      ...(payload.teamSeats !== undefined ? { teamSeats: Number(payload.teamSeats) } : {}),
+      ...(payload.customDomain !== undefined || payload.customDomainEnabled !== undefined
+        ? {
+            customDomain: Boolean(payload.customDomain ?? payload.customDomainEnabled),
+            customDomainEnabled: Boolean(payload.customDomain ?? payload.customDomainEnabled),
+          }
+        : {}),
+      ...(payload.analyticsTools !== undefined || payload.analyticsEnabled !== undefined
+        ? {
+            analyticsTools: Boolean(payload.analyticsTools ?? payload.analyticsEnabled),
+            analyticsEnabled: Boolean(payload.analyticsTools ?? payload.analyticsEnabled),
+          }
+        : {}),
+      ...(payload.hideBrandingEnabled !== undefined
+        ? { hideBrandingEnabled: Boolean(payload.hideBrandingEnabled) }
+        : {}),
+      ...(payload.leadFiltersEnabled !== undefined
+        ? { leadFiltersEnabled: Boolean(payload.leadFiltersEnabled) }
+        : {}),
+      ...(payload.leadExportEnabled !== undefined
+        ? { leadExportEnabled: Boolean(payload.leadExportEnabled) }
+        : {}),
+      ...(payload.leadRemindersEnabled !== undefined
+        ? { leadRemindersEnabled: Boolean(payload.leadRemindersEnabled) }
+        : {}),
+      ...(payload.leadAdvancedAnalyticsEnabled !== undefined
+        ? { leadAdvancedAnalyticsEnabled: Boolean(payload.leadAdvancedAnalyticsEnabled) }
+        : {}),
+      ...(payload.teamSectionTools !== undefined || payload.teamToolsEnabled !== undefined
+        ? {
+            teamSectionTools: Boolean(payload.teamSectionTools ?? payload.teamToolsEnabled),
+            teamToolsEnabled: Boolean(payload.teamSectionTools ?? payload.teamToolsEnabled),
+          }
+        : {}),
+      ...(payload.analyticsMode !== undefined
+        ? { analyticsMode: String(payload.analyticsMode).toUpperCase() }
+        : {}),
+      ...(payload.leadAnalyticsMode !== undefined
+        ? { leadAnalyticsMode: String(payload.leadAnalyticsMode).toUpperCase() }
+        : {}),
+      ...(payload.supportTier !== undefined ? { supportTier: String(payload.supportTier).toUpperCase() } : {}),
+      ...(payload.brandingMode !== undefined
+        ? { brandingMode: String(payload.brandingMode).toUpperCase() }
+        : {}),
+      ...(payload.leadChannels !== undefined ? { leadChannels: payload.leadChannels } : {}),
     };
 
     if (!Object.keys(data).length) {
       return toPlanDto(existing);
     }
 
-    const baseSelect = {
-      id: true,
-      name: true,
-      price: true,
-      yearlyPrice: true,
-      currency: true,
-      trialDays: true,
-      referralReward: true,
-      storageCostPerGB: true,
-      maxServices: true,
-      maxPortfolioImages: true,
-      maxPackages: true,
-      ...(supportsMaxPackageFeatures ? { maxPackageFeatures: true } : {}),
-      storageGB: true,
-      customDomain: true,
-      createdAt: true,
-      updatedAt: true,
-    };
-
     const updated = await prisma.subscriptionPlan.update({
       where: { id: planId },
       data,
-      select:
-        supportsAnalyticsTools || supportsTeamSectionTools
-          ? {
-              ...baseSelect,
-              ...(supportsAnalyticsTools ? { analyticsTools: true } : {}),
-              ...(supportsTeamSectionTools ? { teamSectionTools: true } : {}),
-              ...(supportsMaxPackageFeatures ? { maxPackageFeatures: true } : {}),
-            }
-          : baseSelect,
     });
 
     await planLimitService.invalidatePlanCache();
 
-    const normalizedUpdated = {
-      ...updated,
-      analyticsTools:
-        supportsAnalyticsTools && typeof updated.analyticsTools === "boolean" ? updated.analyticsTools : updated.name !== "FREE",
-      teamSectionTools:
-        supportsTeamSectionTools && typeof updated.teamSectionTools === "boolean"
-          ? updated.teamSectionTools
-          : updated.name === "STUDIO",
-      maxPackageFeatures:
-        supportsMaxPackageFeatures && Number.isFinite(Number(updated.maxPackageFeatures))
-          ? Number(updated.maxPackageFeatures)
-          : defaultPackageFeatureLimit(updated.name),
-    };
-
-    return toPlanDto(normalizedUpdated);
+    return toPlanDto(updated);
   },
 
   async subscriptionChanges(query) {
@@ -252,4 +398,3 @@ export const adminSubscriptionsService = {
     };
   },
 };
-

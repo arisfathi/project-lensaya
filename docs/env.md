@@ -10,6 +10,23 @@ This document lists all environment variables used by Lensaya.
 
 ## Backend Environment Variables
 
+## Docker/Caddy Deployment (Single Droplet)
+
+These variables are used by the provided Docker Compose + Caddy deployment files (`docker-compose.yml`, `docker-compose.prod.yml`, `deploy/Caddyfile`).
+
+| Variable | Required | Type | Purpose | Example / Notes |
+|----------|----------|------|---------|-----------------|
+| `BASE_DOMAIN` | **Yes** | domain | Base domain for platform + wildcard studio hosts | `lensaya.com` |
+| `ACME_EMAIL` | **Yes** | email | Email used for TLS issuance (Let’s Encrypt via Caddy) | `you@lensaya.com` |
+| `CLOUDFLARE_API_TOKEN` | **Yes*** | string | Cloudflare token for DNS challenge (wildcard certs) | Required for `*.${BASE_DOMAIN}` TLS |
+| `POSTGRES_DB` | No | string | Postgres database name (container) | Default: `lensaya` |
+| `POSTGRES_USER` | No | string | Postgres user (container) | Default: `postgres` |
+| `POSTGRES_PASSWORD` | **Yes** | string | Postgres password (container) | Must match `DATABASE_URL` password |
+
+**Notes**:
+- `CLOUDFLARE_API_TOKEN` must have DNS edit permissions for the zone to issue wildcard certificates.
+- These are deployment-only variables; the backend does not read `BASE_DOMAIN` directly (it derives base domain from `PUBLIC_APP_URL`/`APP_URL`, or `APP_BASE_DOMAIN`).
+
 ### Core Application
 
 | Variable | Required | Type | Purpose | Example / Notes |
@@ -51,44 +68,41 @@ This document lists all environment variables used by Lensaya.
 | `DATABASE_POOL_IDLE_TIMEOUT_MS` | No | number | Idle connection timeout | Default: `30000` |
 | `DATABASE_POOL_CONNECTION_TIMEOUT_MS` | No | number | Connection attempt timeout | Default: `10000` |
 
-### Authentication (Google OAuth)
+### Authentication (Google OAuth / Apple Sign-In)
 
 | Variable | Required | Type | Purpose | Notes |
 |----------|----------|------|---------|-------|
 | `GOOGLE_CLIENT_ID` | No | string | Google OAuth app client ID | Required for Google sign-up/login |
 | `GOOGLE_CLIENT_SECRET` | No | string | Google OAuth app secret | Never expose in frontend |
+| `APPLE_AUTH_ENABLED` | No | boolean | Enable Apple Sign-In on the backend | Must be `true` to expose Apple auth flows |
+| `APPLE_CLIENT_ID` | No | string | Apple Services ID | Must match frontend `VITE_APPLE_CLIENT_ID` |
+| `APPLE_TEAM_ID` | No | string | Apple developer team ID | Required when token exchange is enabled |
+| `APPLE_KEY_ID` | No | string | Apple private key identifier | Required when token exchange is enabled |
+| `APPLE_PRIVATE_KEY` | No | PEM string | Apple private key for server-side token exchange | Use escaped newlines in `.env` files |
+| `APPLE_REDIRECT_URI` | No | URL | Apple redirect URI for authorization code exchange | Must match frontend `VITE_APPLE_REDIRECT_URI` exactly |
 
-### Billing (CHIP)
+### Billing (Stripe)
 
 | Variable | Required | Type | Purpose | Notes |
 |----------|----------|------|---------|-------|
-| `CHIP_API_KEY` | No | string | CHIP payment API key | If blank/unset, billing falls back to mock mode |
-| `CHIP_API_BASE_URL` | No | URL | CHIP API endpoint | Default: `https://gate.chip-in.asia/api/v1` |
-| `CHIP_WEBHOOK_SECRET` | No | string | CHIP webhook signature secret | **Important**: Read at module import time; use getter in env.js for tests |
-| `CHIP_SUCCESS_URL` | No | URL | Redirect after successful payment | Should be a valid app URL |
-| `CHIP_CANCEL_URL` | No | URL | Redirect after payment canceled | Should be a valid app URL |
-| `CHIP_REQUEST_TIMEOUT_MS` | No | number | HTTP request timeout | Default: `10000` |
-| `CHIP_MAX_RETRIES` | No | number | Retries on transient errors | Default: `2` |
-| `CHIP_RETRY_BASE_DELAY_MS` | No | number | Initial retry delay | Default: `300` |
-| `CHIP_RETRY_MAX_DELAY_MS` | No | number | Max retry delay (exponential backoff) | Default: `2000` |
-| `CHIP_BRAND_ID_FREE` | Prod-required* | string | Brand ID for FREE tier | Required only if using CHIP in production |
-| `CHIP_BRAND_ID_PRO` | Prod-required* | string | Brand ID for PRO tier | Required only if using CHIP in production |
-| `CHIP_BRAND_ID_STUDIO` | Prod-required* | string | Brand ID for STUDIO tier | Required only if using CHIP in production |
-| `BILLING_PROVIDER` | No | `chip`, `mock` | Billing provider selection | Default: auto-detect from CHIP_API_KEY |
+| `BILLING_PROVIDER` | No | `stripe`, `mock` | Billing provider selection | Production must use `stripe` |
+| `STRIPE_API_KEY` | No | string | Stripe API secret key | Required for Stripe checkout + portal |
+| `STRIPE_API_BASE_URL` | No | URL | Stripe API base URL | Default: `https://api.stripe.com/v1` |
+| `STRIPE_WEBHOOK_SECRET` | No | string | Stripe webhook signature secret | Required for webhook validation |
+| `STRIPE_WEBHOOK_TOLERANCE_SEC` | No | number | Maximum Stripe webhook timestamp age | Default: `300` seconds |
+| `STRIPE_SUCCESS_URL` | No | URL | Redirect after successful checkout | Used by checkout sessions |
+| `STRIPE_CANCEL_URL` | No | URL | Redirect after checkout cancellation | Used by checkout sessions |
+| `STRIPE_REQUEST_TIMEOUT_MS` | No | number | HTTP request timeout | Default: `10000` |
+| `STRIPE_PRICE_ID_PRO_MONTHLY` | Recommended | string | Stripe Price ID for PRO monthly | Standard SaaS setup |
+| `STRIPE_PRICE_ID_PRO_YEARLY` | Recommended | string | Stripe Price ID for PRO yearly | Standard SaaS setup |
+| `STRIPE_PRICE_ID_STUDIO_MONTHLY` | Recommended | string | Stripe Price ID for STUDIO monthly | Standard SaaS setup |
+| `STRIPE_PRICE_ID_STUDIO_YEARLY` | Recommended | string | Stripe Price ID for STUDIO yearly | Standard SaaS setup |
 | `BILLING_MOCK_CHECKOUT_PATH` | No | string | Mock checkout endpoint path | Default: `/dashboard/billing/mock-checkout` |
 
 **Notes**:
-- Mock billing is automatically used if `CHIP_API_KEY` is not set or looks like a placeholder
-- All three brand IDs must be set if using CHIP in production
+- If you don’t set `STRIPE_PRICE_ID_*`, the backend falls back to amount-based checkout (works, but not the “standard SaaS” Stripe architecture).
 
-### Billing (Stripe) - Experimental
-
-| Variable | Required | Type | Purpose | Notes |
-|----------|----------|------|---------|-------|
-| `STRIPE_API_KEY` | No | string | Stripe API secret key | Only used if `BILLING_PROVIDER=stripe` |
-| `STRIPE_WEBHOOK_SECRET` | No | string | Stripe webhook signature secret | Required for webhook validation |
-
-### Storage (Cloudflare R2)
+ ### Storage (Cloudflare R2)
 
 | Variable | Required | Type | Purpose | Notes |
 |----------|----------|------|---------|-------|
@@ -184,7 +198,11 @@ The frontend uses Vite's `.env` system. Create `frontend/.env` or access via `im
 |----------|----------|------|---------|-------|
 | `VITE_API_BASE_URL` | No | URL | Backend API base URL | Default: `/api/v1` (relative); set full URL for external API |
 | `VITE_GOOGLE_CLIENT_ID` | No | string | Google OAuth client ID | Must match backend `GOOGLE_CLIENT_ID` |
+| `VITE_APPLE_AUTH_ENABLED` | No | boolean | Show Apple Sign-In in the UI | Must be `true` to render Apple buttons |
+| `VITE_APPLE_CLIENT_ID` | No | string | Apple Services ID | Must match backend `APPLE_CLIENT_ID` |
+| `VITE_APPLE_REDIRECT_URI` | No | URL | Apple redirect URI used by the browser SDK | Must match backend `APPLE_REDIRECT_URI` |
 | `VITE_APP_URL` | No | URL | App domain for redirects | Default: same as current origin |
+| `VITE_PUBLIC_DIRECTORY_ENABLED` | No | boolean | Enable marketing directory section + `/photographers` route | Default: `false` (hidden/redirected) |
 
 **Notes**:
 - Frontend environment variables must be prefixed with `VITE_` to be accessible
@@ -234,13 +252,32 @@ NODE_ENV=production
 APP_URL=https://app.example.com
 PUBLIC_APP_URL=https://example.com
 
-# Billing (if using CHIP)
+# Apple Sign-In
 
-CHIP_API_KEY=prod-chip-key
-CHIP_WEBHOOK_SECRET=prod-webhook-secret
-CHIP_BRAND_ID_FREE=chip-brand-free
-CHIP_BRAND_ID_PRO=chip-brand-pro
-CHIP_BRAND_ID_STUDIO=chip-brand-studio
+APPLE_AUTH_ENABLED=true
+APPLE_CLIENT_ID=replace-with-apple-services-id
+APPLE_TEAM_ID=replace-with-apple-team-id
+APPLE_KEY_ID=replace-with-apple-key-id
+APPLE_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\nreplace-with-apple-private-key\n-----END PRIVATE KEY-----
+APPLE_REDIRECT_URI=https://app.example.com
+
+# Frontend build-time Apple config (Vite)
+
+VITE_APPLE_AUTH_ENABLED=true
+VITE_APPLE_CLIENT_ID=replace-with-apple-services-id
+VITE_APPLE_REDIRECT_URI=https://app.example.com
+
+# Billing (Stripe)
+
+BILLING_PROVIDER=stripe
+STRIPE_API_KEY=replace-with-stripe-api-key
+STRIPE_WEBHOOK_SECRET=replace-with-stripe-webhook-secret
+STRIPE_SUCCESS_URL=https://example.com/checkout/success
+STRIPE_CANCEL_URL=https://example.com/checkout/canceled
+STRIPE_PRICE_ID_PRO_MONTHLY=replace-with-stripe-price-id
+STRIPE_PRICE_ID_PRO_YEARLY=replace-with-stripe-price-id
+STRIPE_PRICE_ID_STUDIO_MONTHLY=replace-with-stripe-price-id
+STRIPE_PRICE_ID_STUDIO_YEARLY=replace-with-stripe-price-id
 
 # Infrastructure
 
@@ -277,7 +314,6 @@ The following are inferred from code but lack explicit documentation:
 
 - [ ] **Exact behavior of `DATABASE_POOL_MAX_OVERRIDE`**: Does it apply to both API and worker pools, or just API?
 - [ ] **JEMALLOC/performance tuning**: No environment variables visible for memory tuning or worker process concurrency at OS level
-- [ ] **Webhook retry logic**: Does STRIPE provider use same exponential backoff as CHIP, or different?
 - [ ] **Image processing worker concurrency**: Is there a `WORKER_IMAGE_CONCURRENCY` env var, or does it always use 1?
 
 ## Source References

@@ -35,7 +35,7 @@ const buildDnsInstructions = (host) => ({
 });
 
 const getPhotographerContext = async (userId) => {
-  const [photographer, plan] = await Promise.all([
+  const [photographer, entitlements] = await Promise.all([
     prisma.photographer.findUnique({
       where: { userId },
       select: {
@@ -45,19 +45,19 @@ const getPhotographerContext = async (userId) => {
         customDomain: true,
       },
     }),
-    planLimitService.getPlanByUserId(userId),
+    planLimitService.getPlanEntitlementsByUserId(userId),
   ]);
 
   if (!photographer) {
     throw new ApiError(404, "Photographer profile not found");
   }
 
-  return { photographer, plan };
+  return { photographer, entitlements };
 };
 
-const assertEntitled = (plan) => {
-  if (!plan?.customDomain) {
-    throw new ApiError(403, "Custom domains are available on Pro and Studio plans");
+const assertEntitled = (entitlements) => {
+  if (!entitlements?.features?.customDomainEnabled) {
+    throw new ApiError(403, "Custom domains are not enabled on your current plan");
   }
 };
 
@@ -90,10 +90,10 @@ const normalizeRequestedDomain = (value) => {
   };
 };
 
-const mapState = ({ photographer, plan, record, deleted = false }) => ({
+const mapState = ({ photographer, entitlements, record, deleted = false }) => ({
   deleted,
-  eligible: Boolean(plan?.customDomain),
-  currentPlan: String(plan?.name || "FREE").toUpperCase(),
+  eligible: Boolean(entitlements?.features?.customDomainEnabled),
+  currentPlan: String(entitlements?.name || "FREE").toUpperCase(),
   domain: record?.domain || null,
   status: toApiStatus(record?.status),
   sslStatus: toApiSslStatus(record?.sslStatus),
@@ -130,18 +130,18 @@ const buildFailureResult = ({ currentStatus, failureReason }) => ({
 
 export const customDomainService = {
   async getState(userId) {
-    const { photographer, plan } = await getPhotographerContext(userId);
-    return mapState({ photographer, plan, record: photographer.customDomain || null });
+    const { photographer, entitlements } = await getPhotographerContext(userId);
+    return mapState({ photographer, entitlements, record: photographer.customDomain || null });
   },
 
   async save(userId, domain) {
-    const { photographer, plan } = await getPhotographerContext(userId);
-    assertEntitled(plan);
+    const { photographer, entitlements } = await getPhotographerContext(userId);
+    assertEntitled(entitlements);
 
     const normalized = normalizeRequestedDomain(domain);
     const existing = photographer.customDomain || null;
     if (existing?.domain === normalized.domain && existing.status === "ACTIVE") {
-      return mapState({ photographer, plan, record: existing });
+      return mapState({ photographer, entitlements, record: existing });
     }
 
     const claimedByAnotherUser = await prisma.customDomain.findFirst({
@@ -179,7 +179,7 @@ export const customDomainService = {
             },
           });
 
-      return mapState({ photographer, plan, record });
+      return mapState({ photographer, entitlements, record });
     } catch (error) {
       if (String(error?.code || "") === "P2002") {
         throw new ApiError(409, "This domain is already connected to another account");
@@ -253,8 +253,8 @@ export const customDomainService = {
   },
 
   async verify(userId) {
-    const { photographer, plan } = await getPhotographerContext(userId);
-    assertEntitled(plan);
+    const { photographer, entitlements } = await getPhotographerContext(userId);
+    assertEntitled(entitlements);
 
     const existing = photographer.customDomain || null;
     if (!existing) {
@@ -292,21 +292,21 @@ export const customDomainService = {
       },
     });
 
-    return mapState({ photographer, plan, record });
+    return mapState({ photographer, entitlements, record });
   },
 
   async disconnect(userId) {
-    const { photographer, plan } = await getPhotographerContext(userId);
+    const { photographer, entitlements } = await getPhotographerContext(userId);
     const existing = photographer.customDomain || null;
 
     if (!existing) {
-      return mapState({ photographer, plan, record: null, deleted: false });
+      return mapState({ photographer, entitlements, record: null, deleted: false });
     }
 
     await prisma.customDomain.delete({
       where: { photographerId: photographer.id },
     });
 
-    return mapState({ photographer, plan, record: null, deleted: true });
+    return mapState({ photographer, entitlements, record: null, deleted: true });
   },
 };

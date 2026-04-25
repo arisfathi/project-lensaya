@@ -46,7 +46,7 @@ If testing uploads:
 - R2_BUCKET
 
 If testing billing webhooks:
-- CHIP_WEBHOOK_SECRET
+- STRIPE_WEBHOOK_SECRET
 
 ## Frontend
 
@@ -185,7 +185,7 @@ Windows scheduled backup helper scripts:
 
 ## Billing webhook returns webhook secret not configured
 
-- Cause: missing CHIP_WEBHOOK_SECRET (or Stripe secret for Stripe path)
+- Cause: missing STRIPE_WEBHOOK_SECRET
 - Fix: set correct webhook secret and retry
 
 ## Public host routes blocked with 421

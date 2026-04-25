@@ -153,6 +153,7 @@ export const userController = {
           username: null,
           passwordHash: null,
           googleId: null,
+          appleId: null,
           emailVerifiedAt: null,
         },
       });

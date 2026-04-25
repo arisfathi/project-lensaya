@@ -1,13 +1,20 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { GoogleLogin, type CredentialResponse } from "@react-oauth/google";
+import type { CredentialResponse } from "@react-oauth/google";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { BrandWordmark } from "../components/BrandWordmark";
+import { SocialAuthSection } from "../components/auth/SocialAuthSection";
 import { useAuth, getAuthErrorMessage } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { publicApi } from "../lib/api";
 import { getRoleHomePath } from "../lib/roles";
 import { trackSignUp, setExternalUserID } from "../lib/metaPixel";
+import {
+  getAppleSignInConfig,
+  getAppleSignInErrorMessage,
+  isAppleSignInReady,
+  signInWithApple,
+} from "../lib/appleSignIn";
 
 const REFERRAL_STORAGE_KEY = "lensaya_referral_code";
 const VISITOR_ID_STORAGE_KEY = "lensaya_visitor_id";
@@ -51,13 +58,16 @@ export default function Signup() {
   const [referralCode, setReferralCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
   const [errors, setErrors] = useState<{ fullName?: string; email?: string; password?: string }>({});
 
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { signup, googleAuth } = useAuth();
+  const { signup, googleAuth, appleAuth } = useAuth();
   const { success, error } = useToast();
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  const appleConfig = getAppleSignInConfig();
+  const appleReady = isAppleSignInReady(appleConfig);
 
   const redirect = searchParams.get("redirect");
 
@@ -174,6 +184,42 @@ export default function Signup() {
     }
   };
 
+
+  const handleAppleSignup = async () => {
+    if (!appleReady) {
+      error("Apple sign-in is not configured for this environment.");
+      return;
+    }
+
+    try {
+      setAppleLoading(true);
+      const activeReferralCode = referralCode || readStoredReferralCode();
+      const result = await signInWithApple({
+        clientId: appleConfig.clientId,
+        redirectUri: appleConfig.redirectUri,
+      });
+      const user = await appleAuth(result.idToken, {
+        code: result.code,
+        fullName: result.fullName,
+        referralCode: activeReferralCode || undefined,
+      });
+      clearStoredReferralCode();
+
+      trackSignUp({
+        email: user.email,
+        referral_source: activeReferralCode || undefined,
+      });
+      setExternalUserID(user.id);
+
+      success("Account created with Apple successfully.");
+      navigate(redirect || getRoleHomePath(user.role), { replace: true });
+    } catch (err) {
+      error(getAppleSignInErrorMessage(err) || getAuthErrorMessage(err));
+    } finally {
+      setAppleLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col lg:flex-row brand-shell">
       <div className="relative hidden overflow-hidden bg-gradient-to-br from-slate-950 via-cyan-900 to-slate-900 text-white lg:flex lg:w-1/2">
@@ -209,39 +255,32 @@ export default function Signup() {
               ) : null}
             </div>
 
-            <div className="mb-6">
-              {googleClientId ? (
-                <div className="flex justify-center">
-                  <GoogleLogin
-                    onSuccess={(credentialResponse) => {
-                      void handleGoogleSuccess(credentialResponse);
-                    }}
-                    onError={() => error("Google sign-up failed. Please try again.")}
-                    text="continue_with"
-                    shape="rectangular"
-                    theme="outline"
-                    size="large"
-                    width="350"
-                  />
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => error("VITE_GOOGLE_CLIENT_ID is missing in frontend .env.")}
-                  className="w-full rounded-xl border border-slate-200 bg-white/90 px-4 py-3 transition-colors hover:bg-white"
-                >
-                  <span className="font-medium text-slate-700">Google sign-up unavailable</span>
-                </button>
-              )}
-              {googleLoading ? <p className="mt-2 text-center text-xs text-slate-500">Signing up with Google...</p> : null}
-            </div>
+            <SocialAuthSection
+              className="mb-6"
+              googleClientId={googleClientId}
+              appleEnabled={appleReady}
+              googleText="Sign up with Google"
+              appleText="Sign up with Apple"
+              onGoogleSuccess={(credentialResponse) => {
+                void handleGoogleSuccess(credentialResponse);
+              }}
+              onGoogleError={() => error("Google sign-up failed. Please try again.")}
+              onAppleClick={() => {
+                void handleAppleSignup();
+              }}
+              googleLoading={googleLoading}
+              googleLoadingLabel="Signing up with Google..."
+              googleUnavailableLabel="Google sign-up unavailable"
+              onGoogleUnavailableClick={() => error("VITE_GOOGLE_CLIENT_ID is missing in frontend .env.")}
+              appleLoading={appleLoading}
+            />
 
             <div className="relative mb-6">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-slate-200" />
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="bg-transparent px-4 text-slate-500">or continue with email</span>
+                <span className="bg-white px-4 text-slate-500">or continue with email</span>
               </div>
             </div>
 
@@ -320,4 +359,3 @@ export default function Signup() {
     }
 
       
-

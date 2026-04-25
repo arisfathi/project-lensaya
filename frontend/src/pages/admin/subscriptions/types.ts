@@ -1,3 +1,5 @@
+import type { PricingContent } from "../../../lib/pricingContent";
+
 export type PlanName = "FREE" | "PRO" | "STUDIO";
 export type PlanKey = "free" | "pro" | "studio";
 
@@ -6,9 +8,30 @@ export type LimitsPlan = {
   portfolioPhotos: number;
   packagesPerService: number;
   packageFeatures: number;
+  storageGb: number;
+  leadHistoryDays: number;
+  leadVisibilityLimit: number;
+  leadTemplatesCount: number;
+  teamSeats: number;
   customDomain: boolean;
   analyticsTools: boolean;
+  hideBrandingEnabled: boolean;
+  leadFiltersEnabled: boolean;
+  leadExportEnabled: boolean;
+  leadRemindersEnabled: boolean;
+  leadAdvancedAnalyticsEnabled: boolean;
   teamSectionTools: boolean;
+  isVisible: boolean;
+  isActive: boolean;
+  isMostPopular: boolean;
+  analyticsMode: "NONE" | "BASIC" | "ADVANCED";
+  leadAnalyticsMode: "NONE" | "BASIC" | "ADVANCED";
+  supportTier: "STANDARD" | "PRIORITY";
+  brandingMode: "FORCED_LENSAYA" | "REMOVABLE";
+  leadChannels: {
+    whatsapp: boolean;
+    email: boolean;
+  };
 };
 
 export type LimitsShape = {
@@ -32,6 +55,14 @@ export type RevenueByPlanItem = {
 
 export type PlanPricingRecord = {
   id: string;
+  displayName: string;
+  tagline: string;
+  subtitle: string;
+  badgeText: string;
+  ctaText: string;
+  monthlyPriceDisplay: string;
+  yearlyPriceDisplay: string;
+  sortOrder: number;
   price: number;
   yearlyPrice: number;
   currency: string;
@@ -44,28 +75,7 @@ export type PricingShape = {
   studio: PlanPricingRecord;
 };
 
-export type PublicPricingBullets = {
-  FREE: string[];
-  PRO: string[];
-  STUDIO: string[];
-};
-
-export type PublicPricingCompareRow = {
-  id: string;
-  label: string;
-  sortOrder: number;
-  values: {
-    FREE: string;
-    PRO: string;
-    STUDIO: string;
-  };
-};
-
-export type PublicPricingContent = {
-  bullets: PublicPricingBullets;
-  compareRows: PublicPricingCompareRow[];
-  updatedAt: string | null;
-};
+export type PublicPricingContent = PricingContent;
 
 export type PlanCardViewModel = {
   code: PlanName;

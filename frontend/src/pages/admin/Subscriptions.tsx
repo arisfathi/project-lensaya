@@ -134,7 +134,16 @@ export default function Subscriptions() {
 
   const onLimitChange = (
     plan: PlanKey,
-    field: "services" | "portfolioPhotos" | "packagesPerService" | "packageFeatures",
+    field:
+      | "services"
+      | "portfolioPhotos"
+      | "packagesPerService"
+      | "packageFeatures"
+      | "storageGb"
+      | "leadHistoryDays"
+      | "leadVisibilityLimit"
+      | "leadTemplatesCount"
+      | "teamSeats",
     value: string
   ) => {
     setDraftLimits((current) => ({
@@ -148,7 +157,18 @@ export default function Subscriptions() {
 
   const onToggleFeature = (
     plan: PlanKey,
-    field: "customDomain" | "analyticsTools" | "teamSectionTools",
+    field:
+      | "customDomain"
+      | "analyticsTools"
+      | "hideBrandingEnabled"
+      | "leadFiltersEnabled"
+      | "leadExportEnabled"
+      | "leadRemindersEnabled"
+      | "leadAdvancedAnalyticsEnabled"
+      | "teamSectionTools"
+      | "isVisible"
+      | "isActive"
+      | "isMostPopular",
     value: boolean
   ) => {
     setDraftLimits((current) => ({
@@ -166,6 +186,64 @@ export default function Subscriptions() {
       [plan]: {
         ...current[plan],
         [field]: field === "trialDays" ? Math.max(0, Math.trunc(Number(value || 0))) : Number(value || 0),
+      },
+    }));
+  };
+
+  const onPricingTextChange = (
+    plan: PlanKey,
+    field:
+      | "displayName"
+      | "tagline"
+      | "subtitle"
+      | "badgeText"
+      | "ctaText"
+      | "monthlyPriceDisplay"
+      | "yearlyPriceDisplay",
+    value: string
+  ) => {
+    setDraftPricing((current) => ({
+      ...current,
+      [plan]: {
+        ...current[plan],
+        [field]: value,
+      },
+    }));
+  };
+
+  const onSortOrderChange = (plan: PlanKey, value: string) => {
+    setDraftPricing((current) => ({
+      ...current,
+      [plan]: {
+        ...current[plan],
+        sortOrder: Math.max(0, Math.trunc(Number(value || 0))),
+      },
+    }));
+  };
+
+  const onModeChange = (
+    plan: PlanKey,
+    field: "analyticsMode" | "leadAnalyticsMode" | "supportTier" | "brandingMode",
+    value: string
+  ) => {
+    setDraftLimits((current) => ({
+      ...current,
+      [plan]: {
+        ...current[plan],
+        [field]: value,
+      },
+    }));
+  };
+
+  const onLeadChannelToggle = (plan: PlanKey, channel: "whatsapp" | "email", value: boolean) => {
+    setDraftLimits((current) => ({
+      ...current,
+      [plan]: {
+        ...current[plan],
+        leadChannels: {
+          ...current[plan].leadChannels,
+          [channel]: value,
+        },
       },
     }));
   };
@@ -192,10 +270,43 @@ export default function Subscriptions() {
             throw new Error(`Plan record for ${label} is missing`);
           }
           await adminApi.updatePlan(record.id, {
+            displayName: record.displayName,
+            tagline: record.tagline || null,
+            subtitle: record.subtitle || null,
+            badgeText: record.badgeText || null,
+            ctaText: record.ctaText || null,
+            monthlyPriceDisplay: record.monthlyPriceDisplay || null,
+            yearlyPriceDisplay: record.yearlyPriceDisplay || null,
+            sortOrder: Number(record.sortOrder),
+            isVisible: Boolean(draftLimits[key].isVisible),
+            isActive: Boolean(draftLimits[key].isActive),
+            isMostPopular: Boolean(draftLimits[key].isMostPopular),
             price: Number(record.price),
             yearlyPrice: Number(record.yearlyPrice),
             currency: String(record.currency || "USD").toUpperCase(),
             trialDays: Number(record.trialDays),
+            maxServices: Number(draftLimits[key].services),
+            maxPortfolioImages: Number(draftLimits[key].portfolioPhotos),
+            maxPackagesPerService: Number(draftLimits[key].packagesPerService),
+            maxPackageFeaturesPerPackage: Number(draftLimits[key].packageFeatures),
+            storageGb: Number(draftLimits[key].storageGb),
+            leadHistoryDays: Number(draftLimits[key].leadHistoryDays),
+            leadVisibilityLimit: Number(draftLimits[key].leadVisibilityLimit),
+            leadTemplatesCount: Number(draftLimits[key].leadTemplatesCount),
+            teamSeats: Number(draftLimits[key].teamSeats),
+            customDomainEnabled: Boolean(draftLimits[key].customDomain),
+            analyticsEnabled: Boolean(draftLimits[key].analyticsTools),
+            hideBrandingEnabled: Boolean(draftLimits[key].hideBrandingEnabled),
+            leadFiltersEnabled: Boolean(draftLimits[key].leadFiltersEnabled),
+            leadExportEnabled: Boolean(draftLimits[key].leadExportEnabled),
+            leadRemindersEnabled: Boolean(draftLimits[key].leadRemindersEnabled),
+            leadAdvancedAnalyticsEnabled: Boolean(draftLimits[key].leadAdvancedAnalyticsEnabled),
+            teamToolsEnabled: Boolean(draftLimits[key].teamSectionTools),
+            analyticsMode: draftLimits[key].analyticsMode,
+            leadAnalyticsMode: draftLimits[key].leadAnalyticsMode,
+            supportTier: draftLimits[key].supportTier,
+            brandingMode: draftLimits[key].brandingMode,
+            leadChannels: draftLimits[key].leadChannels,
           });
         })
       );
@@ -223,6 +334,87 @@ export default function Subscriptions() {
       bullets: {
         ...current.bullets,
         [plan]: items,
+      },
+    }));
+  }, []);
+
+  const onPublicSectionChange = useCallback((field: "title" | "subtitle", value: string) => {
+    setPublicPricingDraft((current) => ({
+      ...current,
+      section: {
+        ...current.section,
+        [field]: value,
+      },
+    }));
+  }, []);
+
+  const onPublicFaqChange = useCallback((index: number, field: "question" | "answer", value: string) => {
+    setPublicPricingDraft((current) => ({
+      ...current,
+      faq: current.faq.map((item, itemIndex) => (itemIndex !== index ? item : { ...item, [field]: value })),
+    }));
+  }, []);
+
+  const onAddFaq = useCallback(() => {
+    setPublicPricingDraft((current) => ({
+      ...current,
+      faq: [
+        ...current.faq,
+        {
+          question: "New pricing question",
+          answer: "Add the answer that should appear on the public pricing page.",
+        },
+      ],
+    }));
+  }, []);
+
+  const onRemoveFaq = useCallback((index: number) => {
+    setPublicPricingDraft((current) => ({
+      ...current,
+      faq: current.faq.filter((_, itemIndex) => itemIndex !== index),
+    }));
+  }, []);
+
+  const onMoveFaq = useCallback((index: number, direction: -1 | 1) => {
+    setPublicPricingDraft((current) => {
+      const target = index + direction;
+      if (target < 0 || target >= current.faq.length) return current;
+      const faq = [...current.faq];
+      const temp = faq[index];
+      faq[index] = faq[target];
+      faq[target] = temp;
+      return {
+        ...current,
+        faq,
+      };
+    });
+  }, []);
+
+  const onUpgradeTransitionChange = useCallback(
+    (plan: "PRO" | "STUDIO", field: "title" | "description", value: string) => {
+      setPublicPricingDraft((current) => ({
+        ...current,
+        upgradeCopy: {
+          ...current.upgradeCopy,
+          transitions: {
+            ...current.upgradeCopy.transitions,
+            [plan]: {
+              ...current.upgradeCopy.transitions[plan],
+              [field]: value,
+            },
+          },
+        },
+      }));
+    },
+    []
+  );
+
+  const onUpgradeCopyChange = useCallback((field: "warning" | "blocked" | "empty", value: string) => {
+    setPublicPricingDraft((current) => ({
+      ...current,
+      upgradeCopy: {
+        ...current.upgradeCopy,
+        [field]: value,
       },
     }));
   }, []);
@@ -310,6 +502,31 @@ export default function Subscriptions() {
     try {
       setSavingPublicPricing(true);
       const payload = {
+        section: {
+          title: String(publicPricingDraft.section?.title || "").trim(),
+          subtitle: String(publicPricingDraft.section?.subtitle || "").trim(),
+        },
+        faq: (publicPricingDraft.faq || [])
+          .map((item) => ({
+            question: String(item.question || "").trim(),
+            answer: String(item.answer || "").trim(),
+          }))
+          .filter((item) => Boolean(item.question) && Boolean(item.answer)),
+        upgradeCopy: {
+          transitions: {
+            PRO: {
+              title: String(publicPricingDraft.upgradeCopy?.transitions?.PRO?.title || "").trim(),
+              description: String(publicPricingDraft.upgradeCopy?.transitions?.PRO?.description || "").trim(),
+            },
+            STUDIO: {
+              title: String(publicPricingDraft.upgradeCopy?.transitions?.STUDIO?.title || "").trim(),
+              description: String(publicPricingDraft.upgradeCopy?.transitions?.STUDIO?.description || "").trim(),
+            },
+          },
+          warning: String(publicPricingDraft.upgradeCopy?.warning || "").trim(),
+          blocked: String(publicPricingDraft.upgradeCopy?.blocked || "").trim(),
+          empty: String(publicPricingDraft.upgradeCopy?.empty || "").trim(),
+        },
         bullets: {
           FREE: (publicPricingDraft.bullets.FREE || []).map((item) => String(item || "").trim()).filter(Boolean),
           PRO: (publicPricingDraft.bullets.PRO || []).map((item) => String(item || "").trim()).filter(Boolean),
@@ -382,7 +599,11 @@ export default function Subscriptions() {
           onLimitChange,
           onToggleFeature,
           onPricingNumberChange,
+          onPricingTextChange,
           onPricingCurrencyChange,
+          onSortOrderChange,
+          onModeChange,
+          onLeadChannelToggle,
         }}
         formatCurrency={formatCurrency}
       />
@@ -397,6 +618,13 @@ export default function Subscriptions() {
           onSave: () => {
             void savePublicPricingContent();
           },
+          onPublicSectionChange,
+          onPublicFaqChange,
+          onAddFaq,
+          onRemoveFaq,
+          onMoveFaq,
+          onUpgradeTransitionChange,
+          onUpgradeCopyChange,
           onPublicBulletChange,
           onPublicRowFieldChange,
           onAddRow: addPublicCompareRow,

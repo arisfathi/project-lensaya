@@ -7,6 +7,8 @@ import { LoadingCard } from "../../components/ui/LoadingSpinner";
 import { ImageWithFallback } from "../../components/figma/ImageWithFallback";
 import { profileApi, uploadsApi, getApiErrorMessage, isApiAccessError } from "../../lib/api";
 import { useToast } from "../../contexts/ToastContext";
+import { useEntitlements } from "../../hooks/useEntitlements";
+import { toPlanLabel } from "../../lib/entitlements";
 
 type TeamMemberForm = {
   name: string;
@@ -33,6 +35,7 @@ const normalizeMember = (member: TeamMemberForm): TeamMemberForm => ({
 
 export default function TeamSettings() {
   const { success, error } = useToast();
+  const { entitlementUpgradeTarget } = useEntitlements();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
@@ -41,6 +44,7 @@ export default function TeamSettings() {
     enabled: false,
     members: [emptyMember(), emptyMember(), emptyMember()],
   });
+  const teamUpgradeCopy = `Our Team is locked on your current plan. Upgrade to ${toPlanLabel(entitlementUpgradeTarget)} first to manage this section.`;
 
   useEffect(() => {
     let mounted = true;
@@ -162,7 +166,7 @@ export default function TeamSettings() {
 
   const handleSave = async () => {
     if (!canManageTeam) {
-      error("Our Team is not available on your current plan.");
+      error(teamUpgradeCopy);
       return;
     }
     const cleaned = team.members
@@ -214,7 +218,7 @@ export default function TeamSettings() {
         />
 
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          Our Team is locked on your current plan. Upgrade first to manage this section.
+          {teamUpgradeCopy}
           <div className="mt-2">
             <Link to="/dashboard/pricing" className="font-semibold text-amber-900 underline">
               View plans

@@ -335,16 +335,12 @@ export const publicService = {
     });
 
     const planName = String(activeSubscription?.plan || "FREE").toUpperCase();
-    const canHideBranding = planName !== "FREE";
+    const entitlements = await planLimitService.getPlanEntitlements(planName);
+    const canHideBranding =
+      Boolean(entitlements?.features?.hideBrandingEnabled) &&
+      String(entitlements?.modes?.brandingMode || "FORCED_LENSAYA") === "REMOVABLE";
     const showLensayaBranding = !(canHideBranding && p.hideBranding);
-
-    let teamSectionAllowed = false;
-    try {
-      const plan = await planLimitService.getPlanByName(planName);
-      teamSectionAllowed = Boolean(planLimitService.mapPlanLimits(plan).teamSectionTools);
-    } catch {
-      teamSectionAllowed = planName === "STUDIO";
-    }
+    const teamSectionAllowed = Boolean(entitlements?.features?.teamToolsEnabled);
 
     const response = {
       id: p.id,

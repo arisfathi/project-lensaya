@@ -17,6 +17,10 @@ const getStripeConfig = () => ({
   apiKey: cleanString(process.env.STRIPE_API_KEY),
   apiBaseUrl: cleanString(process.env.STRIPE_API_BASE_URL) || STRIPE_API_BASE_URL,
   webhookSecret: cleanString(process.env.STRIPE_WEBHOOK_SECRET),
+  webhookToleranceSec: Math.max(
+    30,
+    Number.parseInt(String(process.env.STRIPE_WEBHOOK_TOLERANCE_SEC || "300"), 10) || 300
+  ),
   successUrl: cleanString(process.env.STRIPE_SUCCESS_URL),
   cancelUrl: cleanString(process.env.STRIPE_CANCEL_URL),
   requestTimeoutMs: Math.max(100, Number.parseInt(String(process.env.STRIPE_REQUEST_TIMEOUT_MS || "10000"), 10) || 10000),
@@ -39,6 +43,36 @@ const normalizeCurrency = (value = "USD") => String(value || "USD").trim().toLow
 const normalizeInterval = (billingCycle = "monthly") => {
   const token = String(billingCycle || "").trim().toLowerCase();
   return token === "yearly" ? "year" : "month";
+};
+
+const normalizeBillingCycle = (billingCycle = "monthly") => {
+  const token = String(billingCycle || "").trim().toLowerCase();
+  if (["yearly", "annual", "year"].includes(token)) return "yearly";
+  return "monthly";
+};
+
+const resolveStripePriceEnvKey = (planTier = "", billingCycle = "monthly") => {
+  const normalizedTier = cleanString(planTier).toUpperCase();
+  if (!normalizedTier) return "";
+  const normalizedCycle = normalizeBillingCycle(billingCycle) === "yearly" ? "YEARLY" : "MONTHLY";
+  return `STRIPE_PRICE_ID_${normalizedTier}_${normalizedCycle}`;
+};
+
+const resolveStripePriceId = (metadata = {}) => {
+  const planTier = cleanString(metadata.planTier || metadata.planName || metadata.planId || "");
+  const billingCycle = normalizeBillingCycle(metadata.billingCycle || metadata.planInterval || "monthly");
+  const envKey = resolveStripePriceEnvKey(planTier, billingCycle);
+  if (!envKey) return null;
+  const priceId = cleanString(process.env[envKey] || "");
+  return priceId || null;
+};
+
+const toIsoFromStripeSeconds = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  const date = new Date(numeric * 1000);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
 };
 
 const flattenMetadata = (metadata = {}) => {
@@ -143,6 +177,8 @@ const resolveStripeTransactionId = (object = {}) =>
 
 const resolveStripeSubscriptionId = (object = {}) => cleanString(object.subscription || object.id || "") || null;
 
+const resolveStripeCustomerId = (object = {}) => cleanString(object.customer || object.customer_id || "") || null;
+
 const resolveStripeAmountCents = (object = {}) => {
   const candidates = [object.amount_paid, object.amount_total, object.amount_due, object.amount, object.total];
   for (const candidate of candidates) {
@@ -206,10 +242,7 @@ export const stripeService = {
       throw new ApiError(500, "Stripe checkout redirects are not configured");
     }
 
-    const numericAmount = Math.max(Math.round(Number(amountCents || 0)), 0);
-    if (numericAmount <= 0) {
-      throw new ApiError(400, "Stripe checkout requires a positive amount");
-    }
+    const priceId = resolveStripePriceId(metadata);
 
     const normalizedMetadata = flattenMetadata({
       ...metadata,
@@ -223,10 +256,26 @@ export const stripeService = {
     params.set("cancel_url", resolvedCancelUrl);
     params.set("client_reference_id", cleanString(normalizedMetadata.userId || ""));
     params.set("line_items[0][quantity]", "1");
-    params.set("line_items[0][price_data][currency]", normalizeCurrency(currency));
-    params.set("line_items[0][price_data][unit_amount]", String(numericAmount));
-    params.set("line_items[0][price_data][product_data][name]", planLabel);
-    params.set("line_items[0][price_data][recurring][interval]", billingInterval);
+
+    if (priceId) {
+      params.set("line_items[0][price]", priceId);
+    } else {
+      const numericAmount = Math.max(Math.round(Number(amountCents || 0)), 0);
+      if (numericAmount <= 0) {
+        throw new ApiError(
+          400,
+          "Stripe checkout requires a configured price id or a positive amount",
+          {
+            expectedEnvKey: resolveStripePriceEnvKey(normalizedMetadata.planTier || "", normalizedMetadata.billingCycle || "monthly") || null,
+          }
+        );
+      }
+
+      params.set("line_items[0][price_data][currency]", normalizeCurrency(currency));
+      params.set("line_items[0][price_data][unit_amount]", String(numericAmount));
+      params.set("line_items[0][price_data][product_data][name]", planLabel);
+      params.set("line_items[0][price_data][recurring][interval]", billingInterval);
+    }
 
     for (const [key, value] of Object.entries(normalizedMetadata)) {
       params.set(`metadata[${key}]`, value);
@@ -252,6 +301,11 @@ export const stripeService = {
 
     const { timestamp, signatures } = parseSignatureHeader(signatureHeader);
     if (!timestamp || signatures.length === 0) return false;
+    const timestampSeconds = Number.parseInt(timestamp, 10);
+    if (!Number.isFinite(timestampSeconds) || timestampSeconds <= 0) return false;
+
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    if (Math.abs(nowSeconds - timestampSeconds) > config.webhookToleranceSec) return false;
 
     const expected = hmacSha256(`${timestamp}.${rawBody}`, config.webhookSecret).toLowerCase();
     return signatures.some((signature) => timingSafeHexEqual(signature, expected));
@@ -271,6 +325,15 @@ export const stripeService = {
     const metadata = await resolveStripeMetadata(eventType, object);
     const transactionId = resolveStripeTransactionId(object) || cleanString(payload.id || "") || null;
     const subscriptionId = resolveStripeSubscriptionId(object) || null;
+    const customerId = resolveStripeCustomerId(object);
+    const cancelAtPeriodEnd =
+      object && typeof object === "object" && Object.prototype.hasOwnProperty.call(object, "cancel_at_period_end")
+        ? Boolean(object.cancel_at_period_end)
+        : null;
+    const periodStartIso = toIsoFromStripeSeconds(object?.current_period_start);
+    const periodEndIso = toIsoFromStripeSeconds(object?.current_period_end);
+    const trialEndIso = toIsoFromStripeSeconds(object?.trial_end);
+    const stripeStatus = cleanString(object?.status || "");
 
     return {
       id: payload.id || object.id || transactionId || subscriptionId || null,
@@ -283,11 +346,84 @@ export const stripeService = {
         ...metadata,
         provider: "STRIPE",
         stripeEventType: eventType,
+        stripeCustomerId: customerId,
+        stripeCancelAtPeriodEnd: cancelAtPeriodEnd,
+        stripeCurrentPeriodStart: periodStartIso,
+        stripeCurrentPeriodEnd: periodEndIso,
+        stripeTrialEnd: trialEndIso,
+        stripeSubscriptionStatus: stripeStatus || null,
       },
       provider: "STRIPE",
       stripeEventType: eventType,
       stripeObjectType: String(object.object || "event").trim() || "event",
     };
+  },
+
+  async createBillingPortalSession({ customerId, returnUrl }) {
+    const config = getStripeConfig();
+    if (!isLikelyConfiguredApiKey(config.apiKey)) {
+      throw new ApiError(503, "Billing portal is not configured. Set a valid STRIPE_API_KEY.");
+    }
+
+    const normalizedCustomerId = cleanString(customerId);
+    if (!normalizedCustomerId) {
+      throw new ApiError(400, "Stripe customer id is required for billing portal");
+    }
+
+    const resolvedReturnUrl = cleanString(returnUrl || config.successUrl || config.cancelUrl);
+    if (!resolvedReturnUrl) {
+      throw new ApiError(500, "Stripe portal return URL is not configured");
+    }
+
+    const params = new URLSearchParams();
+    params.set("customer", normalizedCustomerId);
+    params.set("return_url", resolvedReturnUrl);
+
+    const data = await requestStripe("/billing_portal/sessions", { method: "POST", body: params });
+    return {
+      url: data?.url || null,
+      raw: data,
+    };
+  },
+
+  async setSubscriptionCancelAtPeriodEnd({ subscriptionId, cancelAtPeriodEnd }) {
+    const config = getStripeConfig();
+    if (!isLikelyConfiguredApiKey(config.apiKey)) {
+      throw new ApiError(503, "Stripe billing is not configured. Set a valid STRIPE_API_KEY.");
+    }
+
+    const normalizedSubscriptionId = cleanString(subscriptionId);
+    if (!normalizedSubscriptionId) {
+      throw new ApiError(400, "Stripe subscription id is required");
+    }
+
+    const params = new URLSearchParams();
+    params.set("cancel_at_period_end", cancelAtPeriodEnd ? "true" : "false");
+
+    const data = await requestStripe(`/subscriptions/${encodeURIComponent(normalizedSubscriptionId)}`, {
+      method: "POST",
+      body: params,
+    });
+
+    return { updated: true, raw: data };
+  },
+
+  async cancelSubscriptionNow({ subscriptionId }) {
+    const config = getStripeConfig();
+    if (!isLikelyConfiguredApiKey(config.apiKey)) {
+      throw new ApiError(503, "Stripe billing is not configured. Set a valid STRIPE_API_KEY.");
+    }
+
+    const normalizedSubscriptionId = cleanString(subscriptionId);
+    if (!normalizedSubscriptionId) {
+      throw new ApiError(400, "Stripe subscription id is required");
+    }
+
+    const data = await requestStripe(`/subscriptions/${encodeURIComponent(normalizedSubscriptionId)}`, {
+      method: "DELETE",
+    });
+
+    return { canceled: true, raw: data };
   },
 };
 

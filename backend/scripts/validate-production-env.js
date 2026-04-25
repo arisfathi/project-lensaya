@@ -55,44 +55,23 @@ if (isMissing(process.env.PUBLIC_APP_URL) && isMissing(process.env.PUBLIC_URL) &
 }
 
 // Billing provider checks
-const billingProvider = clean(process.env.BILLING_PROVIDER).toLowerCase() || "auto";
-const chipConfigured = !isMissing(process.env.CHIP_API_KEY) && !isPlaceholder(process.env.CHIP_API_KEY);
+const billingProvider = clean(process.env.BILLING_PROVIDER).toLowerCase() || "stripe";
 const stripeConfigured = !isMissing(process.env.STRIPE_API_KEY) && !isPlaceholder(process.env.STRIPE_API_KEY);
 
 if (billingProvider === "mock") {
   errors.push("BILLING_PROVIDER=mock is not allowed for production");
 }
 
-if (!["auto", "chip", "stripe", ""].includes(billingProvider)) {
-  errors.push(`BILLING_PROVIDER must be one of auto|chip|stripe|mock (received: ${billingProvider})`);
+if (!["auto", "stripe", ""].includes(billingProvider)) {
+  errors.push(`BILLING_PROVIDER must be one of auto|stripe|mock (received: ${billingProvider})`);
 }
 
-if (billingProvider === "chip") {
-  requireNonEmpty("CHIP_API_KEY");
-  requireNotPlaceholder("CHIP_API_KEY");
+if (billingProvider === "auto") {
+  warnings.push("BILLING_PROVIDER=auto is deprecated; use BILLING_PROVIDER=stripe in production");
 }
 
-if (billingProvider === "stripe") {
-  requireNonEmpty("STRIPE_API_KEY");
-  requireNotPlaceholder("STRIPE_API_KEY");
-}
-
-if (billingProvider === "auto" && !chipConfigured && !stripeConfigured) {
-  errors.push("BILLING_PROVIDER=auto requires at least one configured provider (CHIP_API_KEY or STRIPE_API_KEY)");
-}
-
-if (chipConfigured) {
-  requireNonEmpty("CHIP_WEBHOOK_SECRET");
-  requireNotPlaceholder("CHIP_WEBHOOK_SECRET");
-  requireNonEmpty("CHIP_BRAND_ID_PRO");
-  requireNotPlaceholder("CHIP_BRAND_ID_PRO");
-  requireNonEmpty("CHIP_BRAND_ID_STUDIO");
-  requireNotPlaceholder("CHIP_BRAND_ID_STUDIO");
-
-  if (isMissing(process.env.CHIP_BRAND_ID_FREE) || isPlaceholder(process.env.CHIP_BRAND_ID_FREE)) {
-    warnings.push("CHIP_BRAND_ID_FREE is not set; FREE plan checkout brand fallback behavior may be limited");
-  }
-}
+requireNonEmpty("STRIPE_API_KEY");
+requireNotPlaceholder("STRIPE_API_KEY");
 
 if (stripeConfigured) {
   requireNonEmpty("STRIPE_WEBHOOK_SECRET");

@@ -1,0 +1,4 @@
+ALTER TABLE "User"
+  ADD COLUMN IF NOT EXISTS "appleId" VARCHAR(191);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "User_appleId_key" ON "User"("appleId");

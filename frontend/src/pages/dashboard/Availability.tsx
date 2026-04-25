@@ -4,7 +4,11 @@ import { Button } from "../../components/ui/Button";
 import { LoadingCard } from "../../components/ui/LoadingSpinner";
 import { useToast } from "../../contexts/ToastContext";
 import { useAuth } from "../../contexts/AuthContext";
+import { useEntitlements } from "../../hooks/useEntitlements";
+import { usePricingContent } from "../../hooks/usePricingContent";
 import { analyticsApi, availabilityApi, bookingsApi, getApiErrorMessage, isApiAccessError } from "../../lib/api";
+import { trackPricingEventSafe } from "../../lib/pricingAnalytics";
+import { resolveUsagePrompt } from "../../lib/pricingContent";
 import {
   AVAILABILITY_LEGEND,
   DEFAULT_BOOKING_LEADS_PAGINATION,
@@ -91,6 +95,8 @@ export default function Availability() {
   }, [initialStatusMap]);
 
   const { success, error, info } = useToast();
+  const { leadUpgradeTarget } = useEntitlements();
+  const pricingContent = usePricingContent();
 
   const { user } = useAuth();
   const leadFeatures = user?.leadFeatures;
@@ -98,7 +104,7 @@ export default function Availability() {
   const canExportLeads = Boolean(leadFeatures?.export);
   const canUseWhatsAppFollowUp = Boolean(leadFeatures?.channels?.whatsapp);
   const canUseEmailFollowUp = Boolean(leadFeatures?.channels?.email);
-  const leadFiltersUpgradeTarget = leadFeatures?.upgradeTarget || "PRO";
+  const leadFiltersUpgradeTarget = leadFeatures?.upgradeTarget || leadUpgradeTarget;
   const leadNudgeUpgradeTarget = bookingLeadInsights?.locked?.upgradeTarget || leadFiltersUpgradeTarget;
 
   const monthKey = useMemo(() => toMonthKey(currentDate), [currentDate]);
@@ -377,7 +383,24 @@ export default function Availability() {
   const handleLeadFilterChange = <K extends keyof BookingLeadFilters>(key: K, value: BookingLeadFilters[K]) => {
     if (!canUseLeadFilters && (key === "source" || key === "search")) {
       setShowLeadFiltersUpgrade(true);
-      info(`Upgrade to ${leadFiltersUpgradeTarget} to use lead filters.`);
+      trackPricingEventSafe({
+        eventName: "usage_warning_shown",
+        pageContext: "dashboard_availability_leads",
+        currentPlan: user?.plan || "FREE",
+        targetPlan: leadFiltersUpgradeTarget,
+        featureKey: "lead_filters",
+        currentUsage: null,
+        allowedLimit: null,
+        source: "dashboard",
+      });
+      info(
+        resolveUsagePrompt(pricingContent, "warning", {
+          plan: leadFiltersUpgradeTarget,
+          nextPlan: leadFiltersUpgradeTarget,
+          limit: "lead filters",
+          metric: "lead filters",
+        })
+      );
       return;
     }
 
@@ -391,7 +414,24 @@ export default function Availability() {
   const handleExportLeads = async () => {
     if (!canExportLeads) {
       setShowLeadExportUpgrade(true);
-      info(`Upgrade to ${leadFiltersUpgradeTarget} to export leads.`);
+      trackPricingEventSafe({
+        eventName: "usage_limit_blocked",
+        pageContext: "dashboard_availability_leads",
+        currentPlan: user?.plan || "FREE",
+        targetPlan: leadFiltersUpgradeTarget,
+        featureKey: "lead_export",
+        currentUsage: null,
+        allowedLimit: null,
+        source: "dashboard",
+      });
+      info(
+        resolveUsagePrompt(pricingContent, "blocked", {
+          plan: leadFiltersUpgradeTarget,
+          nextPlan: leadFiltersUpgradeTarget,
+          limit: "CSV export",
+          metric: "lead export",
+        })
+      );
       return;
     }
 
@@ -451,16 +491,17 @@ export default function Availability() {
   );
 
   const handleUpgradeFromLeads = async (context: string) => {
-    try {
-      await analyticsApi.track({
-        action: "lead_upgrade_cta_clicked",
-        source: "availability_leads",
+    trackPricingEventSafe({
+      eventName: "pricing_plan_cta_clicked",
+      pageContext: "dashboard_availability_leads",
+      currentPlan: user?.plan || "FREE",
+      targetPlan: leadNudgeUpgradeTarget,
+      featureKey: "lead_upgrade",
+      source: "dashboard",
+      metadata: {
         context,
-        targetPlan: leadNudgeUpgradeTarget,
-      });
-    } catch {
-      // Non-blocking tracking
-    }
+      },
+    });
 
     window.location.href = "/dashboard/pricing";
   };
@@ -617,7 +658,14 @@ export default function Availability() {
               <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-amber-900">Unlock Lead Export</p>
-                  <p className="text-xs text-amber-800">CSV export is available on {leadFiltersUpgradeTarget} and above for pipeline review and retargeting.</p>
+                  <p className="text-xs text-amber-800">
+                    {resolveUsagePrompt(pricingContent, "warning", {
+                      plan: leadFiltersUpgradeTarget,
+                      nextPlan: leadFiltersUpgradeTarget,
+                      limit: "CSV export",
+                      metric: "lead export",
+                    })}
+                  </p>
                 </div>
                 <Button type="button" variant="secondary" onClick={() => void handleUpgradeFromLeads("export_upgrade_banner")}>View Plans</Button>
               </div>

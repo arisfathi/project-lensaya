@@ -1,10 +1,8 @@
 ﻿import { billingService } from "../services/billingService.js";
-import { chipService } from "../services/chipService.js";
 import { stripeService } from "../services/stripeService.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { sendSuccess } from "../utils/response.js";
 import { ApiError } from "../utils/apiError.js";
-import { env } from "../config/env.js";
 
 const looksLikeStripeWebhook = (payload) => stripeService.isStripeWebhookEvent(payload);
 
@@ -56,38 +54,30 @@ export const billingController = {
 
   webhook: asyncHandler(async (req, res) => {
     const stripeSignature = req.headers["stripe-signature"] || "";
-    const chipSignature = req.headers["x-chip-signature"] || req.headers["x-signature"] || "";
-    const isStripeWebhook = Boolean(stripeSignature) || looksLikeStripeWebhook(req.body);
     const rawBody = typeof req.rawBody === "string" ? req.rawBody : "";
-    const chipRawBody = rawBody || JSON.stringify(req.body);
 
-    if (isStripeWebhook) {
-      if (!String(process.env.STRIPE_WEBHOOK_SECRET || "").trim()) {
-        throw new ApiError(503, "Webhook secret is not configured");
-      }
-
-      if (!rawBody) {
-        throw new ApiError(400, "Stripe webhook raw body is required");
-      }
-
-      if (stripeService.verifyWebhook(rawBody, stripeSignature) === false) {
-        throw new ApiError(401, "Invalid webhook signature");
-      }
-
-      const normalizedPayload = await stripeService.normalizeWebhookPayload(req.body);
-      const data = await billingService.handlePaymentWebhook(normalizedPayload);
-      return sendSuccess(res, data);
+    if (!looksLikeStripeWebhook(req.body)) {
+      throw new ApiError(400, "Unsupported webhook payload");
     }
 
-    if (!env.chip.webhookSecret) {
+    if (!String(process.env.STRIPE_WEBHOOK_SECRET || "").trim()) {
       throw new ApiError(503, "Webhook secret is not configured");
     }
 
-    if (chipService.verifyWebhook(chipRawBody, chipSignature) === false) {
+    if (!stripeSignature) {
+      throw new ApiError(400, "Stripe signature header is required");
+    }
+
+    if (!rawBody) {
+      throw new ApiError(400, "Stripe webhook raw body is required");
+    }
+
+    if (stripeService.verifyWebhook(rawBody, stripeSignature) === false) {
       throw new ApiError(401, "Invalid webhook signature");
     }
 
-    const data = await billingService.handlePaymentWebhook(req.body);
+    const normalizedPayload = await stripeService.normalizeWebhookPayload(req.body);
+    const data = await billingService.handlePaymentWebhook(normalizedPayload);
     return sendSuccess(res, data);
   }),
 };

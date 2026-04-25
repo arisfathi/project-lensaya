@@ -52,6 +52,7 @@ Source hints:
 - POST /auth/signup
 - POST /auth/login
 - POST /auth/google
+- POST /auth/apple
 - POST /auth/forgot-password
 - POST /auth/reset-password
 - POST /auth/verify-email
@@ -167,7 +168,7 @@ Webhook endpoints:
 - POST /webhooks/payments
 
 Webhook behavior:
-- Supports CHIP and Stripe-style payloads.
+- Supports Stripe webhook payloads.
 - Signature verification is enforced before processing.
 - Raw body capture is enabled for webhook paths.
 
@@ -175,7 +176,6 @@ Source hints:
 - backend/src/routes/billingRoutes.js
 - backend/src/controllers/billingController.js
 - backend/src/services/billingService.js
-- backend/src/services/chipService.js
 - backend/tests/subscriptionFlow.test.js
 - backend/tests/stripeBilling.test.js
 

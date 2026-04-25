@@ -46,7 +46,7 @@ Key ownership principle:
 
 - Subscription belongs to User (optional Photographer)
 - Transaction links to Subscription and optional User
-- Provider-related fields include providerSubscriptionId and chipPurchaseId
+- Provider-related fields include `providerSubscriptionId` (Stripe). `chipPurchaseId` is a legacy field kept for older data and is no longer written by the app.
 
 ## Content And Platform Controls
 
@@ -83,7 +83,7 @@ Examples of critical uniqueness/relationship constraints:
 - Package unique per service + name
 - PortfolioItem unique per photographer + assetId
 - CustomDomain unique on photographerId and domain
-- Subscription providerSubscriptionId unique, chipPurchaseId unique
+- Subscription `providerSubscriptionId` unique; `chipPurchaseId` unique (legacy)
 - Transaction providerTransactionId unique
 
 Indexes heavily support:

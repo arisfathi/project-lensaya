@@ -1,6 +1,8 @@
 import { ArrowRight, LineChart as LineChartIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 import { LineChart, Line, Tooltip, ResponsiveContainer, XAxis, YAxis } from "recharts";
+import { usePricingContent } from "../../../../hooks/usePricingContent";
+import { resolvePricingUpgradeCopy } from "../../../../lib/pricingContent";
 import { CHART_TOOLTIP_STYLE } from "../constants";
 import { formatNumber } from "../utils";
 
@@ -19,6 +21,9 @@ type AnalyticsTrafficSectionProps = {
 };
 
 export function AnalyticsTrafficSection({ data, actions }: AnalyticsTrafficSectionProps) {
+  const pricingContent = usePricingContent();
+  const upgradeCopy = resolvePricingUpgradeCopy(pricingContent, data.upgradeTarget);
+
   return (
     <div className="mb-5 rounded-[22px] border border-slate-200/80 bg-white/95 p-4 shadow-sm md:mb-8 md:p-6">
       <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between">
@@ -27,7 +32,7 @@ export function AnalyticsTrafficSection({ data, actions }: AnalyticsTrafficSecti
           <p className="mt-1 text-xs leading-5 text-slate-500 md:text-sm">
             {data.hasFullAccess
               ? `Live ${data.trafficWindowDays}-day traffic trend with deeper context available in the rest of the dashboard.`
-              : `Free includes the real ${data.trafficWindowDays}-day trend. ${data.upgradeTarget} adds deeper history and the reason behind the spikes.`}
+              : upgradeCopy.description}
           </p>
         </div>
         <div className="inline-flex items-center gap-2 self-start rounded-full border border-cyan-100 bg-cyan-50 px-3 py-1 text-[11px] font-semibold text-cyan-700">
@@ -66,7 +71,7 @@ export function AnalyticsTrafficSection({ data, actions }: AnalyticsTrafficSecti
         <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-cyan-100 bg-cyan-50/70 px-3.5 py-3.5 sm:mt-6 sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-4">
           <div>
             <p className="text-sm font-semibold text-slate-900">Free tells you if momentum exists.</p>
-            <p className="mt-1 text-xs text-slate-600 sm:text-sm">{data.upgradeTarget} tells you what caused it and which work converted that interest.</p>
+            <p className="mt-1 text-xs text-slate-600 sm:text-sm">{upgradeCopy.description}</p>
           </div>
           <Link
             to="/dashboard/pricing"

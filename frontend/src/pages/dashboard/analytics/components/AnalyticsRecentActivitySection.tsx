@@ -1,5 +1,7 @@
 import { ArrowRight, Users } from "lucide-react";
 import { Link } from "react-router-dom";
+import { usePricingContent } from "../../../../hooks/usePricingContent";
+import { resolvePricingUpgradeCopy } from "../../../../lib/pricingContent";
 import type { ActivityItem } from "../types";
 import { formatActivityAction, formatActivityDetails, formatActivitySource, formatDateTime, formatNumber } from "../utils";
 
@@ -17,6 +19,9 @@ type AnalyticsRecentActivitySectionProps = {
 };
 
 export function AnalyticsRecentActivitySection({ data, actions }: AnalyticsRecentActivitySectionProps) {
+  const pricingContent = usePricingContent();
+  const upgradeCopy = resolvePricingUpgradeCopy(pricingContent, data.upgradeTarget);
+
   return (
     <div className="rounded-[22px] border border-slate-200/80 bg-white/95 p-4 shadow-sm md:p-6">
       <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between">
@@ -25,7 +30,7 @@ export function AnalyticsRecentActivitySection({ data, actions }: AnalyticsRecen
           <p className="mt-1 text-xs leading-5 text-slate-500 md:text-sm">
             {data.hasFullAccess
               ? "Latest tracked visitor actions across your portfolio."
-              : `You are seeing a real preview of the latest visitor actions. ${data.upgradeTarget} unlocks the full timeline.`}
+              : upgradeCopy.description}
           </p>
         </div>
         {!data.hasFullAccess ? (
@@ -78,7 +83,7 @@ export function AnalyticsRecentActivitySection({ data, actions }: AnalyticsRecen
         <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50/80 px-3.5 py-3.5 sm:mt-6 sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-4">
           <div>
             <p className="text-sm font-semibold text-slate-900">
-              {data.hiddenActivityCount > 0 ? `${formatNumber(data.hiddenActivityCount)} more tracked actions are hidden on Free.` : `${data.upgradeTarget} unlocks a longer action timeline as your traffic grows.`}
+              {data.hiddenActivityCount > 0 ? `${formatNumber(data.hiddenActivityCount)} more tracked actions are hidden on Free.` : upgradeCopy.title}
             </p>
             <p className="mt-1 text-xs text-slate-600 sm:text-sm">See deeper visitor behavior before they message, click, or inquire.</p>
           </div>

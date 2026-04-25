@@ -48,6 +48,8 @@ export type OverviewResponse = {
       servicesAtLimit?: number;
     };
     portfolioImages: { used: number; limit: number };
+    storage?: { used: number; usedBytes?: number; limit: number };
+    leads?: { used: number; limit: number };
   };
 };
 
@@ -75,8 +77,15 @@ export type UsageCard = {
   label: string;
   used: number;
   limit: number;
+  unit?: string;
+  remaining: number | null;
+  remainingLabel: string;
+  nearLimit: boolean;
   context: string | null;
   percent: number;
   status: "unlimited" | "critical" | "warning" | "normal";
   suggestionText: string | null;
+  upgradeTarget: string | null;
+  unlockValueLabel: string | null;
+  comparisonBenefits: string[];
 };

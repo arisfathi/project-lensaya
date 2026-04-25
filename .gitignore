@@ -5,6 +5,9 @@ frontend/dist/
 
 backend/.env
 frontend/.env
+.env
 
 .DS_Store
 Thumbs.db
+
+.env.production

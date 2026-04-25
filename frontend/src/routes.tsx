@@ -1,5 +1,5 @@
 import { Suspense, type ReactNode } from "react";
-import { createBrowserRouter } from "react-router-dom";
+import { Navigate, createBrowserRouter } from "react-router-dom";
 import { GuestOnlyRoute, RoleProtectedRoute } from "./components/RoleProtectedRoute";
 import { PlatformHostBoundary } from "./components/routing/PlatformHostBoundary";
 import { PublicHostCanonicalRoute } from "./components/routing/PublicHostCanonicalRoute";
@@ -7,6 +7,7 @@ import { LoadingSpinner } from "./components/ui/LoadingSpinner";
 import { pages } from "./routes.lazy";
 import { ROUTES } from "./routes.paths";
 import { RootLayout } from "./layouts/RootLayout";
+import { PUBLIC_DIRECTORY_ENABLED } from "./lib/marketingFlags";
 
 const routeFallback = (
   <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -69,12 +70,26 @@ export const router = createBrowserRouter([
     element: marketingRoute(<pages.Pricing />),
   },
   {
+    path: ROUTES.checkoutSuccess,
+    element: protectedRoute("PHOTOGRAPHER", "app", <pages.CheckoutSuccess />),
+  },
+  {
+    path: ROUTES.checkoutCanceled,
+    element: protectedRoute("PHOTOGRAPHER", "app", <pages.CheckoutCanceled />),
+  },
+  {
     path: ROUTES.photographers,
-    element: marketingRoute(<pages.PhotographerDirectory />),
+    element: PUBLIC_DIRECTORY_ENABLED
+      ? marketingRoute(<pages.PhotographerDirectory />)
+      : marketingRoute(<Navigate to={ROUTES.home} replace />),
   },
   {
     path: ROUTES.helpCenter,
     element: marketingRoute(<pages.HelpCenter />),
+  },
+  {
+    path: ROUTES.billingHelp,
+    element: marketingRoute(<pages.BillingHelp />),
   },
   {
     path: ROUTES.blog,
@@ -167,10 +182,6 @@ export const router = createBrowserRouter([
   {
     path: ROUTES.dashboardTransactions,
     element: protectedRoute("PHOTOGRAPHER", "app", <pages.DashboardTransactions />),
-  },
-  {
-    path: ROUTES.dashboardMockCheckout,
-    element: protectedRoute("PHOTOGRAPHER", "app", <pages.MockCheckout />),
   },
   {
     path: ROUTES.admin,

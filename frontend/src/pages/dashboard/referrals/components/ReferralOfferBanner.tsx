@@ -1,22 +1,10 @@
 import { Gift } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../../../contexts/AuthContext";
+import { getReferralRewardMessage } from "../../../../lib/entitlements";
 
 export function ReferralOfferBanner() {
   const { user } = useAuth();
-  const currentPlan = user?.plan || "FREE";
-
-  const getRewardMessage = () => {
-    switch (currentPlan) {
-      case "PRO":
-        return "When someone signs up with your link, they'll get a 14-day free Pro trial. You'll instantly get 14 extra days added to your Pro plan.";
-      case "STUDIO":
-        return "When someone signs up with your link, they'll get a 14-day free Pro trial. You'll instantly get 14 extra days added to your Studio plan.";
-      case "FREE":
-      default:
-        return "When someone signs up with your link, they'll get a 14-day free Pro trial. You'll instantly unlock a 7-day Pro trial for yourself.";
-    }
-  };
 
   return (
     <div className="mb-5 rounded-2xl border border-cyan-100 bg-linear-to-br from-cyan-50/90 to-white px-3.5 py-3.5 sm:mb-8 sm:rounded-xl sm:p-6">
@@ -27,7 +15,7 @@ export function ReferralOfferBanner() {
             <span className="text-[11px] font-semibold uppercase tracking-wide sm:text-sm">Referral offer</span>
           </div>
           <p className="text-xs font-medium leading-5 text-slate-900 sm:text-base">
-            {getRewardMessage()}
+            {getReferralRewardMessage(user?.plan)}
           </p>
         </div>
         <Link

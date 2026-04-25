@@ -4,6 +4,7 @@ import { captureException } from "../config/sentry.js";
 import { getPagination, buildPagination } from "../utils/pagination.js";
 import { emailService } from "./emailService.js";
 import { notificationService } from "./notificationService.js";
+import { planLimitService } from "./planLimitService.js";
 
 const REFERRAL_PREFIX = "REF-";
 const CONVERSION_STATUSES = ["CONVERTED", "REWARDED"];
@@ -63,16 +64,13 @@ const decimalToCents = (value) => {
 const resolveRewardCentsFromGrantPlan = async (planName) => {
   const normalizedPlan = String(planName || "").trim().toUpperCase();
   if (!normalizedPlan) return 0;
-  if (!prisma.subscriptionPlan || typeof prisma.subscriptionPlan.findUnique !== "function") {
+
+  try {
+    const plan = await planLimitService.getPlanByName(normalizedPlan);
+    return decimalToCents(plan?.price || 0);
+  } catch {
     return 0;
   }
-
-  const plan = await prisma.subscriptionPlan.findUnique({
-    where: { name: normalizedPlan },
-    select: { price: true },
-  });
-
-  return decimalToCents(plan?.price || 0);
 };
 
 const resolveReferrerByCode = async (referralCode) => {

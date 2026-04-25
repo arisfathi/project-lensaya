@@ -2,19 +2,36 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "../config/prisma.js";
 import { env } from "../config/env.js";
 import { logger } from "../config/logger.js";
-import { chipService } from "./chipService.js";
 import { billingProviderService } from "./billingProviderService.js";
 import { referralService } from "./referralService.js";
 import { notificationService } from "./notificationService.js";
 import { planLimitService } from "./planLimitService.js";
+import { billingReceiptService } from "./billingReceiptService.js";
+import { stripeService } from "./stripeService.js";
 import { ApiError } from "../utils/apiError.js";
 import { getPagination, buildPagination } from "../utils/pagination.js";
 import { enqueueImageProcessing } from "../jobs/imageProcessingQueue.js";
 import { isTransientDatabaseError, retryWithExponentialBackoff } from "../utils/retry.js";
+import { captureException } from "../config/sentry.js";
 
 const decimalToNumber = (value, fallback = 0) => {
   const parsed = Number(value ?? fallback);
   return Number.isFinite(parsed) ? parsed : fallback;
+};
+const formatAmountWithCurrency = (amount, currency = "USD") => {
+  const normalizedCurrency = String(currency || "USD").trim().toUpperCase() || "USD";
+  const numericAmount = Number.isFinite(Number(amount)) ? Number(amount) : 0;
+
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: normalizedCurrency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(numericAmount);
+  } catch {
+    return `${normalizedCurrency} ${numericAmount.toFixed(2)}`;
+  }
 };
 const toPlanLabel = (name = "") => {
   const normalized = String(name || "").trim().toLowerCase();
@@ -35,27 +52,6 @@ const isUuid = (value) => UUID_PATTERN.test(String(value || "").trim());
 const toPlanTier = (value) => {
   const normalized = String(value || "").trim().toUpperCase();
   return PLAN_TIERS.has(normalized) ? normalized : null;
-};
-const resolveConfiguredChipBrandId = (planTier) => {
-  const tier = toPlanTier(planTier);
-  if (!tier) return "";
-  return String(env.chip?.brandIds?.[tier] || "").trim();
-};
-const resolveChipBrandId = (plan) => {
-  const tier = toPlanTier(plan?.name);
-  const configuredBrandId = resolveConfiguredChipBrandId(tier);
-  if (configuredBrandId) {
-    return configuredBrandId;
-  }
-
-  if (env.isProduction) {
-    throw new ApiError(
-      503,
-      `Billing checkout is not configured for ${tier || "the selected"} plan. Set CHIP_BRAND_ID_${tier || "PLAN"}.`
-    );
-  }
-
-  return String(plan?.id || "").trim();
 };
 const getFrontendBaseUrl = () => {
   const candidate = String(env.appUrl || env.publicAppUrl || env.frontendUrl || "").trim();
@@ -240,12 +236,12 @@ const resolveWebhookProvider = (payload) => {
   const candidates = [payload?.provider, payload?._provider, payload?.metadata?.provider, payload?.metadata?._provider];
   for (const candidate of candidates) {
     const normalized = String(candidate || "").trim().toUpperCase();
-    if (["CHIP", "STRIPE", "MANUAL", "OTHER"].includes(normalized)) {
+    if (["STRIPE", "MANUAL", "OTHER"].includes(normalized)) {
       return normalized;
     }
   }
 
-  return "CHIP";
+  return "STRIPE";
 };
 const normalizePaymentStatus = (value) => String(value || "").trim().toLowerCase();
 const toTransactionStatus = (paymentStatus) => {
@@ -396,7 +392,7 @@ const resolveLinkedSubscriptionByProvider = async (client, providerSubscriptionI
   if (!providerSubscriptionId) return null;
   return client.subscription.findFirst({
     where: {
-      OR: [{ providerSubscriptionId }, { chipPurchaseId: providerSubscriptionId }],
+      providerSubscriptionId,
     },
     orderBy: { createdAt: "desc" },
     select: {
@@ -987,11 +983,11 @@ const upsertSuccessfulSubscriptionTx = async (tx, payload) => {
     userId,
     targetPlan,
     providerSubscriptionId,
-    chipPurchaseId,
+    providerCustomerId,
     periodStart,
     periodEnd,
     billingInterval = "monthly",
-    provider = "CHIP",
+    provider = "STRIPE",
     status = "ACTIVE",
     trialEndsAt = null,
   } = payload;
@@ -1010,13 +1006,10 @@ const upsertSuccessfulSubscriptionTx = async (tx, payload) => {
   const photographerId = user.photographer?.id || null;
 
   let existing = null;
-  if (providerSubscriptionId || chipPurchaseId) {
+  if (providerSubscriptionId) {
     existing = await tx.subscription.findFirst({
       where: {
-        OR: [
-          ...(providerSubscriptionId ? [{ providerSubscriptionId }] : []),
-          ...(chipPurchaseId ? [{ chipPurchaseId }] : []),
-        ],
+        providerSubscriptionId,
       },
       orderBy: { createdAt: "desc" },
     });
@@ -1078,8 +1071,8 @@ const upsertSuccessfulSubscriptionTx = async (tx, payload) => {
     status,
     provider,
     billingInterval: toBillingIntervalEnum(billingInterval),
+    providerCustomerId: providerCustomerId || null,
     ...(providerSubscriptionId ? { providerSubscriptionId } : {}),
-    ...(chipPurchaseId ? { chipPurchaseId } : {}),
     currentPeriodStart: periodStart,
     currentPeriodEnd: periodEnd,
     pendingPlan: null,
@@ -1120,8 +1113,8 @@ const upsertSuccessfulSubscriptionTx = async (tx, payload) => {
       status,
       provider,
       billingInterval: toBillingIntervalEnum(billingInterval),
+      providerCustomerId: providerCustomerId || null,
       providerSubscriptionId: providerSubscriptionId || null,
-      chipPurchaseId: chipPurchaseId || null,
       currentPeriodStart: periodStart,
       currentPeriodEnd: periodEnd,
       startedAt: periodStart,
@@ -1231,7 +1224,6 @@ const createCheckoutSessionForPlan = async ({
   referralCode,
   billingCycle = "monthly",
   sourcePlanId,
-  requestedProvider,
   additionalMetadata = {},
 }) => {
   const planTier = toPlanTier(plan?.name);
@@ -1244,7 +1236,6 @@ const createCheckoutSessionForPlan = async ({
   const billingCountry = await resolvePhotographerCountryForUser(userId);
   const runtimeProvider = billingProviderService.resolveCheckoutProvider({
     country: billingCountry,
-    requestedProvider,
   });
   const metadata = {
     userId,
@@ -1261,7 +1252,6 @@ const createCheckoutSessionForPlan = async ({
     trialDays: plan.trialDays,
     referralCode: referralCode || null,
     billingCountry: billingCountry || null,
-    requestedProvider: requestedProvider || null,
     resolvedProvider: runtimeProvider,
     successUrl: successUrl || null,
     cancelUrl: cancelUrl || null,
@@ -1286,7 +1276,7 @@ const createCheckoutSessionForPlan = async ({
     });
   }
 
-  const targetPlanId = runtimeProvider === "chip" ? resolveChipBrandId(plan) : String(plan.id || planTier);
+  const targetPlanId = String(plan.id || planTier);
   const session = await billingProviderService.createCheckoutSession({
     sessionId: pendingTransaction?.id || null,
     targetPlanId,
@@ -1311,6 +1301,7 @@ export const billingService = {
     const plans = await planLimitService.listAllPlans();
     return {
       plans: plans.map((plan) => {
+        const entitlements = planLimitService.toEntitlements(plan);
         const pricing = resolvePlanPricing(plan, "monthly");
         const yearlyReference = pricing.monthlyPrice * 12;
         const yearlyDiscountPercent =
@@ -1320,7 +1311,18 @@ export const billingService = {
 
         return {
           id: plan.name,
-          name: toPlanLabel(plan.name),
+          name: entitlements.marketing.displayName || toPlanLabel(plan.name),
+          displayName: entitlements.marketing.displayName || toPlanLabel(plan.name),
+          tagline: entitlements.marketing.tagline || null,
+          subtitle: entitlements.marketing.subtitle || null,
+          badgeText: entitlements.marketing.badgeText || null,
+          ctaText: entitlements.marketing.ctaText || null,
+          monthlyPriceDisplay: entitlements.marketing.monthlyPriceDisplay || null,
+          yearlyPriceDisplay: entitlements.marketing.yearlyPriceDisplay || null,
+          sortOrder: entitlements.marketing.sortOrder,
+          isVisible: entitlements.features.isVisible,
+          isActive: entitlements.features.isActive,
+          isMostPopular: entitlements.features.isMostPopular,
           // Backward-compatible monthly fields
           price: pricing.monthlyPrice,
           currency: plan.currency,
@@ -1339,26 +1341,35 @@ export const billingService = {
           storageCostPerGB: decimalToNumber(plan.storageCostPerGB),
           packageLimitScope: "per_service",
           limits: {
-            portfolioPhotos: plan.maxPortfolioImages,
-            services: plan.maxServices,
-            portfolioImages: plan.maxPortfolioImages,
-            packages: plan.maxPackages,
-            packagesPerService: plan.maxPackages,
-            packageFeatures: Number(plan.maxPackageFeatures ?? 5),
-            maxPackageFeatures: Number(plan.maxPackageFeatures ?? 5),
-            storage: plan.storageGB,
-            customDomain: Boolean(plan.customDomain),
-            analyticsTools: Boolean(plan.analyticsTools),
-            teamSectionTools: Boolean(plan.teamSectionTools),
+            portfolioPhotos: entitlements.limits.maxPortfolioImages,
+            services: entitlements.limits.maxServices,
+            portfolioImages: entitlements.limits.maxPortfolioImages,
+            packages: entitlements.limits.maxPackagesPerService,
+            packagesPerService: entitlements.limits.maxPackagesPerService,
+            packageFeatures: entitlements.limits.maxPackageFeaturesPerPackage,
+            maxPackageFeatures: entitlements.limits.maxPackageFeaturesPerPackage,
+            storage: entitlements.limits.storageGb,
+            customDomain: entitlements.features.customDomainEnabled,
+            analyticsTools: entitlements.features.analyticsEnabled,
+            teamSectionTools: entitlements.features.teamToolsEnabled,
+            leadHistoryDays: entitlements.limits.leadHistoryDays,
+            leadVisibilityLimit: entitlements.limits.leadVisibilityLimit,
+            leadTemplatesCount: entitlements.limits.leadTemplatesCount,
+            teamSeats: entitlements.limits.teamSeats,
           },
           features: {
             lensayaSubdomain: true,
             basicAnalytics: true,
-            advancedAnalytics: Boolean(plan.analyticsTools),
-            removeLensayaBranding: String(plan.name || "").toUpperCase() !== "FREE",
-            prioritySupport: String(plan.name || "").toUpperCase() !== "FREE",
-            teamSection: Boolean(plan.teamSectionTools),
+            advancedAnalytics: entitlements.features.analyticsEnabled,
+            removeLensayaBranding: entitlements.features.hideBrandingEnabled,
+            prioritySupport: entitlements.modes.supportTier === "PRIORITY",
+            teamSection: entitlements.features.teamToolsEnabled,
+            leadFiltersEnabled: entitlements.features.leadFiltersEnabled,
+            leadExportEnabled: entitlements.features.leadExportEnabled,
+            leadRemindersEnabled: entitlements.features.leadRemindersEnabled,
+            leadAdvancedAnalyticsEnabled: entitlements.features.leadAdvancedAnalyticsEnabled,
           },
+          entitlements,
         };
       }),
     };
@@ -1469,6 +1480,35 @@ export const billingService = {
     const currentBillingCycle = current.response.billingCycle || resolveSubscriptionBillingCycle(current.record);
     const changeType = resolvePlanChangeType(currentPlan, targetPlan, currentBillingCycle, billingCycle);
     const now = new Date();
+
+    const stripeCustomerId = String(current.record?.providerCustomerId || "").trim();
+    const isStripeSubscription = current.response.provider === "stripe" && Boolean(stripeCustomerId);
+    const isPaidToPaidChange =
+      currentPlan !== "FREE" &&
+      targetPlan !== "FREE" &&
+      (currentPlan !== targetPlan || currentBillingCycle !== billingCycle);
+
+    if (isStripeSubscription && isPaidToPaidChange) {
+      const portal = await stripeService.createBillingPortalSession({
+        customerId: stripeCustomerId,
+        returnUrl: normalizeReturnUrl(payload?.successUrl) || normalizeReturnUrl(payload?.cancelUrl) || getFrontendBaseUrl() + "/dashboard/transactions",
+      });
+
+      if (!portal?.url) {
+        throw new ApiError(503, "Billing portal is unavailable");
+      }
+
+      return {
+        action: "checkout_required",
+        changeType,
+        currentPlan,
+        targetPlan,
+        billingCycle,
+        provider: "stripe",
+        checkoutUrl: portal.url,
+        sessionId: null,
+      };
+    }
 
     if (targetPlan === "FREE") {
       if (currentPlan === "FREE" && !current.record?.cancelAtPeriodEnd) {
@@ -1707,7 +1747,6 @@ export const billingService = {
       referralCode,
       billingCycle,
       sourcePlanId: targetPlan,
-      requestedProvider: payload?.paymentProvider,
       additionalMetadata: {
         previousPlan: currentPlan,
         previousBillingCycle: currentBillingCycle,
@@ -1918,14 +1957,29 @@ export const billingService = {
   async createPortalSession(userId, returnUrl) {
     const snapshot = await getSubscriptionSnapshot(userId, { syncLifecycle: true });
     const normalizedReturnUrl = normalizeReturnUrl(returnUrl);
-    const portalUrl = new URL(getFrontendBaseUrl() + "/dashboard/transactions");
-    portalUrl.searchParams.set("billing", "1");
+
+    const fallbackPortalUrl = new URL(getFrontendBaseUrl() + "/dashboard/transactions");
+    fallbackPortalUrl.searchParams.set("billing", "1");
     if (normalizedReturnUrl) {
-      portalUrl.searchParams.set("returnUrl", normalizedReturnUrl);
+      fallbackPortalUrl.searchParams.set("returnUrl", normalizedReturnUrl);
+    }
+
+    let portalUrl = fallbackPortalUrl.toString();
+    if (snapshot.response.provider === "stripe") {
+      const stripeCustomerId = String(snapshot.record?.providerCustomerId || "").trim();
+      if (stripeCustomerId) {
+        const portal = await stripeService.createBillingPortalSession({
+          customerId: stripeCustomerId,
+          returnUrl: normalizedReturnUrl || fallbackPortalUrl.toString(),
+        });
+        if (portal?.url) {
+          portalUrl = portal.url;
+        }
+      }
     }
 
     return {
-      portalUrl: portalUrl.toString(),
+      portalUrl,
       returnUrl: normalizedReturnUrl,
       provider: snapshot.response.provider,
       capabilities: {
@@ -1965,6 +2019,15 @@ export const billingService = {
 
     const now = new Date();
     if (atPeriodEnd && activePaid.currentPeriodEnd && activePaid.currentPeriodEnd > now) {
+      const isStripeProvider =
+        billingProviderService.mapRuntimeProvider(activePaid.provider, activePaid.providerSubscriptionId || "") === "stripe";
+      if (isStripeProvider && activePaid.providerSubscriptionId) {
+        await stripeService.setSubscriptionCancelAtPeriodEnd({
+          subscriptionId: activePaid.providerSubscriptionId,
+          cancelAtPeriodEnd: true,
+        });
+      }
+
       await prisma.subscription.update({
         where: { id: activePaid.id },
         data: {
@@ -1986,6 +2049,12 @@ export const billingService = {
 
       const current = await getSubscriptionSnapshot(userId, { syncLifecycle: true });
       return { action: "scheduled", ...current.response };
+    }
+
+    const isStripeProvider =
+      billingProviderService.mapRuntimeProvider(activePaid.provider, activePaid.providerSubscriptionId || "") === "stripe";
+    if (isStripeProvider && activePaid.providerSubscriptionId) {
+      await stripeService.cancelSubscriptionNow({ subscriptionId: activePaid.providerSubscriptionId });
     }
 
     await prisma.$transaction(async (tx) => {
@@ -2036,6 +2105,18 @@ export const billingService = {
     if (!scheduledCancellation) {
       const current = await getSubscriptionSnapshot(userId, { syncLifecycle: true });
       return { action: "unchanged", ...current.response };
+    }
+
+    const isStripeProvider =
+      billingProviderService.mapRuntimeProvider(
+        scheduledCancellation.provider,
+        scheduledCancellation.providerSubscriptionId || ""
+      ) === "stripe";
+    if (isStripeProvider && scheduledCancellation.providerSubscriptionId) {
+      await stripeService.setSubscriptionCancelAtPeriodEnd({
+        subscriptionId: scheduledCancellation.providerSubscriptionId,
+        cancelAtPeriodEnd: false,
+      });
     }
 
     await prisma.subscription.update({
@@ -2122,7 +2203,10 @@ export const billingService = {
           failureReason: tx.failureReason || null,
           receiptUrl: null,
           receiptAvailable: false,
-          receiptLabel: "Receipt available after live provider integration.",
+          receiptLabel:
+            String(tx.status || "").toUpperCase() === "SUCCEEDED"
+              ? "Receipt emailed to your account email."
+              : "Receipt will be emailed after successful payment.",
         };
       }),
       summary: {
@@ -2189,8 +2273,21 @@ export const billingService = {
       Boolean(userId && linkedSubscription) &&
       ((transactionStatus === "FAILED" && canMarkSubscriptionPastDue(linkedSubscription, eventOccurredAt)) ||
         (["REFUNDED", "CANCELED"].includes(transactionStatus) && canCancelPaidSubscription(linkedSubscription)));
+
+    const stripeEventType = String(payload?.stripeEventType || metadata?.stripeEventType || "").trim().toLowerCase();
+    const stripeSubscriptionStatus = String(metadata?.stripeSubscriptionStatus || "").trim().toLowerCase();
+    const stripeCancelAtPeriodEnd =
+      typeof metadata?.stripeCancelAtPeriodEnd === "boolean" ? metadata.stripeCancelAtPeriodEnd : null;
+    const requiresStripeLifecycleMutation =
+      webhookProvider === "STRIPE" &&
+      Boolean(providerSubscriptionId) &&
+      (stripeSubscriptionStatus === "trialing" ||
+        (stripeEventType === "customer.subscription.updated" && stripeCancelAtPeriodEnd !== null));
+
     const requiresSerializedLifecycleMutation =
-      Boolean(isPaymentSucceeded && userId) || Boolean(shouldApplyLifecycle && shouldMutateLinkedSubscription);
+      Boolean(isPaymentSucceeded && userId) ||
+      Boolean(shouldApplyLifecycle && shouldMutateLinkedSubscription) ||
+      Boolean(shouldApplyLifecycle && requiresStripeLifecycleMutation);
 
     if (!shouldApplyLifecycle || !requiresSerializedLifecycleMutation) {
       const transactionData = {
@@ -2207,16 +2304,32 @@ export const billingService = {
         processedAt: new Date(),
       };
 
+      let storedTransaction = null;
       if (providerTransactionId) {
-        await prisma.transaction.upsert({
+        storedTransaction = await prisma.transaction.upsert({
           where: { providerTransactionId },
           update: transactionData,
           create: transactionData,
         });
       } else {
-        await prisma.transaction.create({
+        storedTransaction = await prisma.transaction.create({
           data: transactionData,
         });
+      }
+
+      if (transactionStatus === "SUCCEEDED" && storedTransaction?.id && userId) {
+        const isFirstSuccessSignal =
+          !existingTransaction ||
+          (shouldApplyStatus && transactionStatusChanged && normalizeSubscriptionStatus(existingTransaction.status) !== "SUCCEEDED");
+
+        if (isFirstSuccessSignal) {
+          try {
+            await billingReceiptService.sendReceiptForTransaction(storedTransaction.id);
+          } catch (error) {
+            logger.error({ err: error, transactionId: storedTransaction.id, userId }, "Failed to send receipt email");
+            captureException(error, { service: "billingReceiptService", action: "sendReceiptForTransaction" });
+          }
+        }
       }
 
       return { received: true };
@@ -2275,6 +2388,68 @@ export const billingService = {
       let reprocessPhotographerId = null;
       let reprocessReason = null;
 
+      const stripeEventType = String(payload?.stripeEventType || metadata?.stripeEventType || "").trim().toLowerCase();
+      const stripeSubscriptionStatus = String(metadata?.stripeSubscriptionStatus || "").trim().toLowerCase();
+      const stripeCancelAtPeriodEnd =
+        typeof metadata?.stripeCancelAtPeriodEnd === "boolean" ? metadata.stripeCancelAtPeriodEnd : null;
+      const stripeCurrentPeriodStart = metadata?.stripeCurrentPeriodStart ? new Date(metadata.stripeCurrentPeriodStart) : null;
+      const stripeCurrentPeriodEnd = metadata?.stripeCurrentPeriodEnd ? new Date(metadata.stripeCurrentPeriodEnd) : null;
+      const stripeTrialEnd = metadata?.stripeTrialEnd ? new Date(metadata.stripeTrialEnd) : null;
+
+      if (
+        webhookProvider === "STRIPE" &&
+        shouldApplyLifecycleInTx &&
+        userIdInTx &&
+        providerSubscriptionId &&
+        stripeSubscriptionStatus === "trialing"
+      ) {
+        if (!targetPlan) {
+          throw new ApiError(400, "Webhook is missing a valid plan");
+        }
+
+        const periodStart = stripeCurrentPeriodStart && !Number.isNaN(stripeCurrentPeriodStart.getTime())
+          ? stripeCurrentPeriodStart
+          : eventOccurredAt;
+        const periodEnd = stripeCurrentPeriodEnd && !Number.isNaN(stripeCurrentPeriodEnd.getTime())
+          ? stripeCurrentPeriodEnd
+          : addPlanInterval(periodStart, metadata.planInterval || toPlanIntervalToken(metadataBillingCycle));
+        const trialEndsAt =
+          stripeTrialEnd && !Number.isNaN(stripeTrialEnd.getTime()) ? stripeTrialEnd : null;
+
+        const subscriptionResult = await upsertSuccessfulSubscriptionTx(tx, {
+          userId: userIdInTx,
+          targetPlan,
+          provider: webhookProvider,
+          providerSubscriptionId,
+          providerCustomerId: String(metadata?.stripeCustomerId || "").trim() || null,
+          periodStart,
+          periodEnd,
+          billingInterval: metadataBillingCycle,
+          status: "TRIALING",
+          trialEndsAt,
+        });
+        subscriptionRecordInTx = subscriptionResult.subscription;
+        didApplySuccessfulPaymentInTx = false;
+      }
+
+      if (
+        webhookProvider === "STRIPE" &&
+        shouldApplyLifecycleInTx &&
+        linkedSubscriptionInTx &&
+        stripeEventType === "customer.subscription.updated" &&
+        stripeCancelAtPeriodEnd !== null
+      ) {
+        const periodEnd = stripeCurrentPeriodEnd && !Number.isNaN(stripeCurrentPeriodEnd.getTime()) ? stripeCurrentPeriodEnd : null;
+        await tx.subscription.update({
+          where: { id: linkedSubscriptionInTx.id },
+          data: {
+            cancelAtPeriodEnd: stripeCancelAtPeriodEnd,
+            ...(stripeCancelAtPeriodEnd ? {} : { canceledAt: null }),
+            ...(periodEnd ? { currentPeriodEnd: periodEnd } : {}),
+          },
+        });
+      }
+
       if (isPaymentSucceededInTx && userIdInTx && shouldApplyLifecycleInTx) {
         if (!targetPlan) {
           throw new ApiError(400, "Webhook is missing a valid plan");
@@ -2286,10 +2461,12 @@ export const billingService = {
         const subscriptionResult = await upsertSuccessfulSubscriptionTx(tx, {
           userId: userIdInTx,
           targetPlan,
+          provider: webhookProvider,
           providerSubscriptionId,
-          chipPurchaseId: webhookProvider === "CHIP" ? providerSubscriptionId : null,
+          providerCustomerId: String(metadata?.stripeCustomerId || "").trim() || null,
           periodStart,
           periodEnd,
+          billingInterval: metadataBillingCycle,
         });
         subscriptionRecordInTx = subscriptionResult.subscription;
         didApplySuccessfulPaymentInTx = subscriptionResult.stateChanged === true;
@@ -2344,20 +2521,23 @@ export const billingService = {
         processedAt: new Date(),
       };
 
+      let storedTransaction = null;
       if (providerTransactionId) {
-        await transactionStore.upsert({
+        storedTransaction = await transactionStore.upsert({
           where: { providerTransactionId },
           update: transactionData,
           create: transactionData,
         });
       } else {
-        await transactionStore.create({
+        storedTransaction = await transactionStore.create({
           data: transactionData,
         });
       }
 
       return {
         userId: userIdInTx,
+        transactionId: storedTransaction?.id || null,
+        transactionStatus: transactionStatusInTx,
         shouldNotifySuccessfulPayment:
           isPaymentSucceededInTx && shouldApplyLifecycleInTx && didApplySuccessfulPaymentInTx && Boolean(userIdInTx),
         notificationSubscriptionId: subscriptionRecordInTx?.id || existingTransactionInTx?.subscriptionId || null,
@@ -2373,11 +2553,12 @@ export const billingService = {
     if (applied.shouldNotifySuccessfulPayment && applied.userId) {
       const amountValue = Number.isFinite(amountCents) ? amountCents / 100 : 0;
       const targetPlanLabel = targetPlan || "plan";
+      const formattedAmount = formatAmountWithCurrency(amountValue, currency);
       await notificationService.create({
         userId: applied.userId,
         type: "BILLING",
         title: "Payment successful",
-        body: `Your ${targetPlanLabel} subscription payment of $${amountValue.toFixed(2)} was successful.`,
+        body: `Your ${targetPlanLabel} subscription payment of ${formattedAmount} was successful.`,
         subscriptionId: applied.notificationSubscriptionId,
         actionUrl: "/dashboard/settings",
       });
@@ -2388,14 +2569,18 @@ export const billingService = {
       });
     }
 
+    if (applied.transactionStatus === "SUCCEEDED" && applied.transactionId && applied.userId) {
+      try {
+        await billingReceiptService.sendReceiptForTransaction(applied.transactionId);
+      } catch (error) {
+        logger.error(
+          { err: error, transactionId: applied.transactionId, userId: applied.userId },
+          "Failed to send receipt email"
+        );
+        captureException(error, { service: "billingReceiptService", action: "sendReceiptForTransaction" });
+      }
+    }
+
     return { received: true };
   },
 };
-
-
-
-
-
-
-
-

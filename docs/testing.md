@@ -50,7 +50,7 @@ Every test file sets minimal env variables:
 ```javascript
 process.env.NODE_ENV = "test";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "test-secret";
-process.env.CHIP_WEBHOOK_SECRET = process.env.CHIP_WEBHOOK_SECRET || "chip-webhook-secret";
+process.env.STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "stripe-webhook-secret";
 process.env.DATABASE_URL = process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/lensaya?schema=public";
 ```
 
@@ -120,17 +120,15 @@ Multiple-step workflows ensuring end-to-end functionality:
 - Suspending a photographer → asset flags are removed
 - Reactivating a photographer → cleanup state is reset
 
-### Webhook/Integration Tests (`chipWebhookSecretOrder.test.js`)
+### Webhook/Integration Tests (`stripeBilling.test.js`)
 
 **Purpose**: Validate payment provider webhook handling is correct.
 
 **Key behaviors**:
-- CHIP webhook signature verification with HMAC-SHA256
+- Stripe webhook signature verification
 - Idempotent webhook processing (duplicate webhooks are safe)
 - Status transitions are state-aware (not just upserts)
-- Stripe signature validation (if applicable)
-
-**Gotcha**: `CHIP_WEBHOOK_SECRET` is a getter in env.js, allowing tests to set it after initial import (see `chipWebhookSecretOrder.test.js` pattern).
+- Stripe signature validation with raw body + `stripe-signature` header
 
 ### Health Monitoring Tests (`workerHealthMonitoring.test.js`)
 
@@ -190,20 +188,9 @@ This approach restores original methods even if the callback throws, preventing 
 
 **Issue**: Tests that need specific env values must set them BEFORE importing modules that read env.
 
-**Example Problem**: If a test reads env.CHIP_WEBHOOK_SECRET in test code, it must be set before the test file imports `billingController`.
+**Example Problem**: If a test relies on `STRIPE_WEBHOOK_SECRET`, it should be set before exercising the webhook handler.
 
-**Solution**: Set env vars at the top of each test file; use getter pattern for dynamic env (like CHIP_WEBHOOK_SECRET).
-
-### 2. Webhook Secret Timing
-
-**Issue**: `CHIP_WEBHOOK_SECRET` is read at module import time for most code, but tests need to set it dynamically.
-
-**Solution**: `env.js` uses a getter for this value:
-```javascript
-get webhookSecret() { return process.env.CHIP_WEBHOOK_SECRET || ""; }
-```
-
-See `chipWebhookSecretOrder.test.js` for test examples that rely on this.
+**Solution**: Set env vars at the top of each test file before importing the app/controller modules (standard Node ESM behavior).
 
 ### 3. Database State Pollution
 
@@ -213,14 +200,13 @@ See `chipWebhookSecretOrder.test.js` for test examples that rely on this.
 
 ### 4. Webhook Signature Verification
 
-**Issue**: CHIP and Stripe webhooks require HMAC signature verification. Tests must include correct signatures.
+**Issue**: Stripe webhooks require signature verification. Tests must include valid signatures or mock the verification function.
 
 **Pattern**: 
 ```javascript
-const signature = hmacSha256(rawBody, process.env.CHIP_WEBHOOK_SECRET);
 const res = await request(app)
   .post("/api/v1/billing/webhook")
-  .set("X-Chip-Signature", signature)
+  .set("stripe-signature", "t=...,v1=...")
   .send(payload);
 ```
 
@@ -260,7 +246,7 @@ Tests verify this with duplicate webhook posts.
 | Multi-step user flow | Flow | authAndPortfolioFlow.test.js |
 | Prevent data leakage | Isolation | tenantIsolation.test.js |
 | Admin action cascades | Side-effect | adminPhotographerStatusSideEffects.test.js |
-| External service handling | Integration | stripeBilling.test.js, chipWebhookSecretOrder.test.js |
+| External service handling | Integration | stripeBilling.test.js |
 | System health check | Health | workerHealthMonitoring.test.js |
 
 ## Writing New Tests

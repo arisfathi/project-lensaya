@@ -30,6 +30,7 @@ type SubscriptionOverviewProps = {
 
 export function SubscriptionOverview({ data, actions }: SubscriptionOverviewProps) {
   const PaymentStatusIcon = data.paymentStatus.icon;
+  const portalAvailable = String(data.subscription?.provider || "").toLowerCase() === "stripe";
 
   return (
     <section className="mb-4 rounded-2xl border border-slate-200/80 bg-white/95 p-3.5 sm:mb-6 sm:rounded-xl sm:border-slate-200 sm:bg-linear-to-br sm:from-white sm:to-slate-50 sm:p-6 sm:shadow-sm">
@@ -61,13 +62,13 @@ export function SubscriptionOverview({ data, actions }: SubscriptionOverviewProp
           </div>
           <div className="rounded-lg border border-slate-200/80 bg-white px-3 py-2.5">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Receipt / Invoice</p>
-            <p className="mt-1 text-sm font-semibold text-slate-900">Placeholder available</p>
+            <p className="mt-1 text-sm font-semibold text-slate-900">Emailed after successful payment</p>
           </div>
         </div>
 
         <div className="rounded-xl border border-slate-200/80 bg-slate-50/75 p-3 sm:p-4">
           <p className="text-sm font-semibold text-slate-900">Quick Actions</p>
-          <p className="mt-0.5 text-xs text-slate-600">Change plan, manage renewal, and open provider billing.</p>
+          <p className="mt-0.5 text-xs text-slate-600">Change plan, manage renewal, and review billing details.</p>
 
           <div className="mt-3 space-y-2">
             {data.currentPlan === "FREE" ? (
@@ -119,19 +120,21 @@ export function SubscriptionOverview({ data, actions }: SubscriptionOverviewProp
               Change Plan
             </Link>
 
-            <button
-              type="button"
-              onClick={actions.onOpenBillingPortal}
-              disabled={actions.portalLoading}
-              className={`flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                data.paymentStatus.tone === "danger"
-                  ? "bg-red-500 text-white hover:bg-red-600"
-                  : "border border-slate-200 text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              <ExternalLink className="h-4 w-4" />
-              {actions.portalLoading ? "Opening..." : "Open Billing Center"}
-            </button>
+            {portalAvailable ? (
+              <button
+                type="button"
+                onClick={actions.onOpenBillingPortal}
+                disabled={actions.portalLoading}
+                className={`flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                  data.paymentStatus.tone === "danger"
+                    ? "bg-red-500 text-white hover:bg-red-600"
+                    : "border border-slate-200 text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                <ExternalLink className="h-4 w-4" />
+                {actions.portalLoading ? "Opening..." : "Manage billing"}
+              </button>
+            ) : null}
           </div>
         </div>
       </div>

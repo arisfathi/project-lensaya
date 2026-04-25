@@ -163,8 +163,8 @@ const resolveCustomDomain = async (hostContext) => {
     });
   }
 
-  const currentPlan = await planLimitService.getPlanByPhotographerId(photographer.id);
-  if (!currentPlan?.customDomain) {
+  const entitlements = await planLimitService.getPlanEntitlementsByPhotographerId(photographer.id);
+  if (!entitlements?.features?.customDomainEnabled) {
     return buildResponse({
       hostContext,
       resolutionStatus: "upgrade_required",

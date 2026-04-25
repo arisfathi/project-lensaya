@@ -257,53 +257,61 @@ test("contract: GET /api/v1/admin/plans", async () => {
   );
 });
 
-
-test("contract: GET /api/v1/admin/subscriptions/changes", async () => {
+test("contract: GET /api/v1/admin/subscriptions/public-pricing", async () => {
   const expected = {
-    items: [{ user: "u1", from: "FREE", to: "PRO", action: "upgraded", at: "2026-03-01T00:00:00.000Z" }],
-    pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
-  };
-
-  await withMethodPatches(
-    [{ target: adminService, method: "subscriptionChanges", fn: async () => expected }],
-    async () => {
-      const res = await request(app).get("/api/v1/admin/subscriptions/changes?page=1&limit=20").set(authHeader());
-      assert.equal(res.status, 200);
-      assert.equal(res.body.success, true);
-      assert.deepEqual(res.body.data, expected);
-    }
-  );
-});
-
-test("contract: PUT /api/v1/admin/plans/:planId", async () => {
-  const expected = {
-    id: "p1",
-    name: "PRO",
-    price: 29,
-    yearlyPrice: 290,
-    currency: "USD",
-    trialDays: 7,
-    referralReward: 0,
-    storageCostPerGB: 0,
-    maxServices: 10,
-    maxPortfolioImages: 100,
-    maxPackages: 5,
-    maxPackageFeatures: 10,
-    storageGB: 10,
-    customDomain: true,
-    analyticsTools: true,
-    teamSectionTools: false,
-    createdAt: "2026-03-01T00:00:00.000Z",
+    section: { title: "Custom pricing title", subtitle: "Custom pricing subtitle" },
+    faq: [{ question: "Can I edit this?", answer: "Yes." }],
+    upgradeCopy: {
+      transitions: {
+        PRO: { title: "Custom pro title", description: "Custom pro description" },
+        STUDIO: { title: "Custom studio title", description: "Custom studio description" },
+      },
+      warning: "Custom warning",
+      blocked: "Custom blocked",
+      empty: "Custom empty",
+    },
+    bullets: { FREE: [], PRO: [], STUDIO: [] },
+    compareRows: [],
     updatedAt: "2026-03-01T00:00:00.000Z",
   };
 
   await withMethodPatches(
-    [{ target: adminService, method: "updatePlan", fn: async () => expected }],
+    [{ target: adminService, method: "getPublicPricingContent", fn: async () => expected }],
+    async () => {
+      const res = await request(app).get("/api/v1/admin/subscriptions/public-pricing").set(authHeader());
+      assert.equal(res.status, 200);
+      assert.equal(res.body.success, true);
+      assert.deepEqual(res.body.data, expected);
+    }
+  );
+});
+
+test("contract: PATCH /api/v1/admin/subscriptions/public-pricing", async () => {
+  const expected = {
+    saved: true,
+    section: { title: "Custom pricing title", subtitle: "Custom pricing subtitle" },
+    faq: [{ question: "Can I edit this?", answer: "Yes." }],
+    upgradeCopy: {
+      transitions: {
+        PRO: { title: "Custom pro title", description: "Custom pro description" },
+        STUDIO: { title: "Custom studio title", description: "Custom studio description" },
+      },
+      warning: "Custom warning",
+      blocked: "Custom blocked",
+      empty: "Custom empty",
+    },
+    bullets: { FREE: [], PRO: [], STUDIO: [] },
+    compareRows: [],
+    updatedAt: "2026-03-01T00:00:00.000Z",
+  };
+
+  await withMethodPatches(
+    [{ target: adminService, method: "updatePublicPricingContent", fn: async () => expected }],
     async () => {
       const res = await request(app)
-        .put("/api/v1/admin/plans/3fa85f64-5717-4562-b3fc-2c963f66afa6")
+        .patch("/api/v1/admin/subscriptions/public-pricing")
         .set(authHeader())
-        .send({ price: 29 });
+        .send({ section: { title: "Custom pricing title", subtitle: "Custom pricing subtitle" } });
 
       assert.equal(res.status, 200);
       assert.equal(res.body.success, true);
@@ -311,6 +319,7 @@ test("contract: PUT /api/v1/admin/plans/:planId", async () => {
     }
   );
 });
+
 test("contract: GET /api/v1/admin/revenue/overview", async () => {
   const expected = { mrr: 100, successRate: 50, ytdRevenue: 200, activeSubscriptions: 3, subscriptionRevenue: 150, transactionTotals: { total: 1, succeeded: 1, failed: 0, pending: 0, refunded: 0, canceled: 0 } };
 

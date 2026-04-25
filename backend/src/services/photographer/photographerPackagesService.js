@@ -1,4 +1,5 @@
 import { prisma } from "../../config/prisma.js";
+import { ApiError } from "../../utils/apiError.js";
 import { ensureTenantOwnership, applyTenantFilter, isAdminTenant } from "../../utils/tenantQuery.js";
 import { planLimitService } from "../planLimitService.js";
 import {
@@ -52,17 +53,16 @@ export const photographerPackagesService = {
     ensureTenantOwnership(service, tenant, "Service");
 
     if (!isAdminTenant(tenant)) {
-      const [plan, packageCount] = await Promise.all([
+      const [plan, packageGate] = await Promise.all([
         planLimitService.getPlanByPhotographerId(photographerId),
-        countActivePackagesForService(photographerId, data.serviceId),
+        planLimitService.canCreatePackage({
+          photographerId,
+          serviceId: data.serviceId,
+          serviceName: service?.name || "this service",
+        }),
       ]);
-      if (planLimitService.isLimitReached({ used: packageCount, max: plan.maxPackages })) {
-        await planLimitService.throwLimitReached({
-          metric: "packagesPerService",
-          used: packageCount,
-          plan,
-          contextLabel: service?.name || "this service",
-        });
+      if (!packageGate.allowed) {
+        throw new ApiError(403, packageGate.message || "Package limit reached");
       }
 
       enforcePackageFeatureLimit({ plan, features: normalizedFeatures });
@@ -98,17 +98,16 @@ export const photographerPackagesService = {
       ensureTenantOwnership(service, tenant, "Service");
 
       if (!isAdminTenant(tenant) && data.serviceId !== existing.serviceId && existing.status !== "ARCHIVED") {
-        const [plan, packageCount] = await Promise.all([
+        const [plan, packageGate] = await Promise.all([
           planLimitService.getPlanByPhotographerId(existing.photographerId),
-          countActivePackagesForService(existing.photographerId, data.serviceId),
+          planLimitService.canCreatePackage({
+            photographerId: existing.photographerId,
+            serviceId: data.serviceId,
+            serviceName: service?.name || "this service",
+          }),
         ]);
-        if (planLimitService.isLimitReached({ used: packageCount, max: plan.maxPackages })) {
-          await planLimitService.throwLimitReached({
-            metric: "packagesPerService",
-            used: packageCount,
-            plan,
-            contextLabel: service?.name || "this service",
-          });
+        if (!packageGate.allowed) {
+          throw new ApiError(403, packageGate.message || "Package limit reached");
         }
       }
     }
@@ -145,17 +144,13 @@ export const photographerPackagesService = {
     ensureTenantOwnership(original, tenant, "Package");
 
     if (!isAdminTenant(tenant)) {
-      const [plan, packageCount] = await Promise.all([
-        planLimitService.getPlanByPhotographerId(original.photographerId),
-        countActivePackagesForService(original.photographerId, original.serviceId),
-      ]);
-      if (planLimitService.isLimitReached({ used: packageCount, max: plan.maxPackages })) {
-        await planLimitService.throwLimitReached({
-          metric: "packagesPerService",
-          used: packageCount,
-          plan,
-          contextLabel: original?.service?.name || "this service",
-        });
+      const packageGate = await planLimitService.canCreatePackage({
+        photographerId: original.photographerId,
+        serviceId: original.serviceId,
+        serviceName: original?.service?.name || "this service",
+      });
+      if (!packageGate.allowed) {
+        throw new ApiError(403, packageGate.message || "Package limit reached");
       }
     }
 

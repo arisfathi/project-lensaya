@@ -4,10 +4,10 @@ import request from "supertest";
 
 process.env.NODE_ENV = "test";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "test-secret";
-process.env.CHIP_WEBHOOK_SECRET = process.env.CHIP_WEBHOOK_SECRET || "chip-webhook-secret";
 
 const { app } = await import("../src/app.js");
 const { prisma } = await import("../src/config/prisma.js");
+const { env } = await import("../src/config/env.js");
 const { authService } = await import("../src/services/authService.js");
 const { planLimitService } = await import("../src/services/planLimitService.js");
 const { uploadService } = await import("../src/services/uploadService.js");
@@ -77,6 +77,83 @@ test("POST /auth/login returns authenticated user payload", async () => {
   );
 });
 
+
+
+test("POST /auth/apple returns 404 when Apple auth is disabled", async () => {
+  const res = await request(app).post("/api/v1/auth/apple").send({
+    idToken: "apple-id-token",
+  });
+
+  assert.equal(res.status, 404);
+  assert.equal(res.body.success, false);
+});
+
+test("POST /auth/apple rejects malformed payload when both code and idToken are missing", async () => {
+  const res = await request(app).post("/api/v1/auth/apple").send({
+    fullName: "Apple User",
+  });
+
+  assert.equal(res.status, 400);
+  assert.equal(res.body.success, false);
+});
+
+test("POST /auth/apple requires authorization code when token exchange is enabled", async () => {
+  const originalAppleAuth = { ...env.appleAuth };
+  env.appleAuth.enabled = true;
+  env.appleAuth.tokenExchangeEnabled = true;
+
+  try {
+    const res = await request(app).post("/api/v1/auth/apple").send({
+      idToken: "apple-id-token-without-code",
+    });
+
+    assert.equal(res.status, 400);
+    assert.equal(res.body.success, false);
+  } finally {
+    env.appleAuth.enabled = originalAppleAuth.enabled;
+    env.appleAuth.tokenExchangeEnabled = originalAppleAuth.tokenExchangeEnabled;
+    env.appleAuth.clientId = originalAppleAuth.clientId;
+    env.appleAuth.teamId = originalAppleAuth.teamId;
+    env.appleAuth.keyId = originalAppleAuth.keyId;
+    env.appleAuth.privateKey = originalAppleAuth.privateKey;
+    env.appleAuth.redirectUri = originalAppleAuth.redirectUri;
+  }
+});
+
+test("POST /auth/apple returns authenticated user payload", async () => {
+  await withMethodPatches(
+    [
+      {
+        target: authService,
+        method: "appleAuth",
+        fn: async () => ({
+          user: {
+            id: "auth-apple-user-1",
+            email: "apple@example.com",
+            fullName: "Apple User",
+            username: "apple-user",
+            role: "PHOTOGRAPHER",
+            status: "ACTIVE",
+          },
+          accessToken: "token-access",
+          refreshToken: "token-refresh",
+          expiresIn: "15m",
+        }),
+      },
+    ],
+    async () => {
+      const res = await request(app).post("/api/v1/auth/apple").send({
+        idToken: "apple-id-token",
+        fullName: "Apple User",
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.body.success, true);
+      assert.equal(res.body.data.user.id, "auth-apple-user-1");
+      assert.equal(res.body.data.user.email, "apple@example.com");
+    }
+  );
+});
 test("GET /auth/me returns latest subscription plan for photographer", async () => {
   const userId = "auth-me-user-1";
 
@@ -378,4 +455,3 @@ test("POST /uploads/presign creates a presigned upload for onboarding", async ()
     }
   );
 });
-

@@ -158,10 +158,10 @@ export function BookingLeadsFilterHeader({
         {(bookingLeadWindow?.isHistoryClamped || (bookingLeadWindow?.isVisibleClamped && Number(bookingLeadWindow?.maxVisibleLeads || 0) > 0)) ? (
           <div className="mt-2 space-y-1">
             {bookingLeadWindow?.isHistoryClamped ? (
-              <p className="text-[11px] text-amber-700">History window: last {bookingLeadWindow.historyDays} days.</p>
+              <p className="text-[11px] text-amber-700">Inquiry history: last {bookingLeadWindow.historyDays} days.</p>
             ) : null}
             {bookingLeadWindow?.isVisibleClamped && Number(bookingLeadWindow?.maxVisibleLeads || 0) > 0 ? (
-              <p className="text-[11px] text-amber-700">Visibility cap: latest {bookingLeadWindow.maxVisibleLeads} leads.</p>
+              <p className="text-[11px] text-amber-700">Stored inquiries: latest {bookingLeadWindow.maxVisibleLeads} inquiries.</p>
             ) : null}
           </div>
         ) : null}
@@ -173,10 +173,10 @@ export function BookingLeadsFilterHeader({
             <h2 className="text-base font-semibold text-slate-900 sm:text-lg">Booking Leads</h2>
             <p className="mt-0.5 text-xs text-slate-600 sm:text-sm">Latest inquiries, optimized for quick follow-up.</p>
             {bookingLeadWindow?.isHistoryClamped ? (
-              <p className="mt-1 text-xs text-amber-700">History window applied: showing last {bookingLeadWindow.historyDays} days.</p>
+              <p className="mt-1 text-xs text-amber-700">Inquiry history applied: showing last {bookingLeadWindow.historyDays} days.</p>
             ) : null}
             {bookingLeadWindow?.isVisibleClamped && Number(bookingLeadWindow?.maxVisibleLeads || 0) > 0 ? (
-              <p className="mt-1 text-xs text-amber-700">Lead visibility limit reached: showing the latest {bookingLeadWindow.maxVisibleLeads} leads.</p>
+              <p className="mt-1 text-xs text-amber-700">Stored inquiries limit reached: showing the latest {bookingLeadWindow.maxVisibleLeads} inquiries.</p>
             ) : null}
           </div>
           <div className="flex items-center gap-2 self-start sm:self-auto">
@@ -265,7 +265,7 @@ export function BookingLeadsFilterHeader({
       {showLeadFiltersUpgrade && !canUseLeadFilters ? (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-amber-900">Unlock Lead Filters</p>
+            <p className="text-sm font-semibold text-amber-900">Unlock Inquiry Filters</p>
             <p className="text-xs text-amber-800">Source and search filters are available on {leadFiltersUpgradeTarget} and above to prioritize high-intent leads faster.</p>
           </div>
           <Button type="button" variant="secondary" onClick={() => onUpgradeFromLeads("filters_upgrade_banner")}>View Plans</Button>

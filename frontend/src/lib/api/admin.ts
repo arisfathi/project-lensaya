@@ -81,6 +81,17 @@ export const adminApi = {
       items: Array<{
         id: string;
         name: string;
+        displayName: string;
+        tagline: string | null;
+        subtitle: string | null;
+        badgeText: string | null;
+        ctaText: string | null;
+        monthlyPriceDisplay: string | null;
+        yearlyPriceDisplay: string | null;
+        sortOrder: number;
+        isVisible: boolean;
+        isActive: boolean;
+        isMostPopular: boolean;
         price: number;
         yearlyPrice: number;
         currency: string;
@@ -90,11 +101,31 @@ export const adminApi = {
         maxServices: number;
         maxPortfolioImages: number;
         maxPackages: number;
+        maxPackagesPerService: number;
         maxPackageFeatures: number;
+        maxPackageFeaturesPerPackage: number;
         storageGB: number;
+        storageGb: number;
+        leadHistoryDays: number;
+        leadVisibilityLimit: number;
+        leadTemplatesCount: number;
+        teamSeats: number;
         customDomain: boolean;
+        customDomainEnabled: boolean;
         analyticsTools: boolean;
+        analyticsEnabled: boolean;
+        hideBrandingEnabled: boolean;
+        leadFiltersEnabled: boolean;
+        leadExportEnabled: boolean;
+        leadRemindersEnabled: boolean;
+        leadAdvancedAnalyticsEnabled: boolean;
         teamSectionTools: boolean;
+        teamToolsEnabled: boolean;
+        analyticsMode: "NONE" | "BASIC" | "ADVANCED";
+        leadAnalyticsMode: "NONE" | "BASIC" | "ADVANCED";
+        supportTier: "STANDARD" | "PRIORITY";
+        brandingMode: "FORCED_LENSAYA" | "REMOVABLE";
+        leadChannels: { whatsapp?: boolean; email?: boolean };
         createdAt: string;
         updatedAt: string;
       }>;
@@ -103,6 +134,17 @@ export const adminApi = {
     planId: string,
     payload: Partial<{
       name: string;
+      displayName: string;
+      tagline: string | null;
+      subtitle: string | null;
+      badgeText: string | null;
+      ctaText: string | null;
+      monthlyPriceDisplay: string | null;
+      yearlyPriceDisplay: string | null;
+      sortOrder: number;
+      isVisible: boolean;
+      isActive: boolean;
+      isMostPopular: boolean;
       price: number;
       yearlyPrice: number;
       currency: string;
@@ -112,16 +154,47 @@ export const adminApi = {
       maxServices: number;
       maxPortfolioImages: number;
       maxPackages: number;
+      maxPackagesPerService: number;
       maxPackageFeatures: number;
+      maxPackageFeaturesPerPackage: number;
       storageGB: number;
+      storageGb: number;
+      leadHistoryDays: number;
+      leadVisibilityLimit: number;
+      leadTemplatesCount: number;
+      teamSeats: number;
       customDomain: boolean;
+      customDomainEnabled: boolean;
       analyticsTools: boolean;
+      analyticsEnabled: boolean;
+      hideBrandingEnabled: boolean;
+      leadFiltersEnabled: boolean;
+      leadExportEnabled: boolean;
+      leadRemindersEnabled: boolean;
+      leadAdvancedAnalyticsEnabled: boolean;
       teamSectionTools: boolean;
+      teamToolsEnabled: boolean;
+      analyticsMode: "NONE" | "BASIC" | "ADVANCED";
+      leadAnalyticsMode: "NONE" | "BASIC" | "ADVANCED";
+      supportTier: "STANDARD" | "PRIORITY";
+      brandingMode: "FORCED_LENSAYA" | "REMOVABLE";
+      leadChannels: { whatsapp?: boolean; email?: boolean };
     }>
   ) =>
     request<{
       id: string;
       name: string;
+      displayName: string;
+      tagline: string | null;
+      subtitle: string | null;
+      badgeText: string | null;
+      ctaText: string | null;
+      monthlyPriceDisplay: string | null;
+      yearlyPriceDisplay: string | null;
+      sortOrder: number;
+      isVisible: boolean;
+      isActive: boolean;
+      isMostPopular: boolean;
       price: number;
       yearlyPrice: number;
       currency: string;
@@ -131,11 +204,31 @@ export const adminApi = {
       maxServices: number;
       maxPortfolioImages: number;
       maxPackages: number;
+      maxPackagesPerService: number;
       maxPackageFeatures: number;
+      maxPackageFeaturesPerPackage: number;
       storageGB: number;
+      storageGb: number;
+      leadHistoryDays: number;
+      leadVisibilityLimit: number;
+      leadTemplatesCount: number;
+      teamSeats: number;
       customDomain: boolean;
+      customDomainEnabled: boolean;
       analyticsTools: boolean;
+      analyticsEnabled: boolean;
+      hideBrandingEnabled: boolean;
+      leadFiltersEnabled: boolean;
+      leadExportEnabled: boolean;
+      leadRemindersEnabled: boolean;
+      leadAdvancedAnalyticsEnabled: boolean;
       teamSectionTools: boolean;
+      teamToolsEnabled: boolean;
+      analyticsMode: "NONE" | "BASIC" | "ADVANCED";
+      leadAnalyticsMode: "NONE" | "BASIC" | "ADVANCED";
+      supportTier: "STANDARD" | "PRIORITY";
+      brandingMode: "FORCED_LENSAYA" | "REMOVABLE";
+      leadChannels: { whatsapp?: boolean; email?: boolean };
       createdAt: string;
       updatedAt: string;
     }>(`/admin/plans/${planId}`, {
@@ -160,6 +253,29 @@ export const adminApi = {
     }>("/admin/subscriptions/changes", { query }),
   publicPricingContent: () =>
     request<{
+      section: {
+        title: string;
+        subtitle: string;
+      };
+      faq: Array<{
+        question: string;
+        answer: string;
+      }>;
+      upgradeCopy: {
+        transitions: {
+          PRO: {
+            title: string;
+            description: string;
+          };
+          STUDIO: {
+            title: string;
+            description: string;
+          };
+        };
+        warning: string;
+        blocked: string;
+        empty: string;
+      };
       bullets: {
         FREE: string[];
         PRO: string[];
@@ -178,6 +294,29 @@ export const adminApi = {
       updatedAt: string | null;
     }>("/admin/subscriptions/public-pricing"),
   updatePublicPricingContent: (payload: {
+    section?: {
+      title: string;
+      subtitle: string;
+    };
+    faq?: Array<{
+      question: string;
+      answer: string;
+    }>;
+    upgradeCopy?: {
+      transitions?: {
+        PRO: {
+          title: string;
+          description: string;
+        };
+        STUDIO: {
+          title: string;
+          description: string;
+        };
+      };
+      warning?: string;
+      blocked?: string;
+      empty?: string;
+    };
     bullets?: {
       FREE: string[];
       PRO: string[];
@@ -196,6 +335,29 @@ export const adminApi = {
   }) =>
     request<{
       saved: boolean;
+      section: {
+        title: string;
+        subtitle: string;
+      };
+      faq: Array<{
+        question: string;
+        answer: string;
+      }>;
+      upgradeCopy: {
+        transitions: {
+          PRO: {
+            title: string;
+            description: string;
+          };
+          STUDIO: {
+            title: string;
+            description: string;
+          };
+        };
+        warning: string;
+        blocked: string;
+        empty: string;
+      };
       bullets: {
         FREE: string[];
         PRO: string[];

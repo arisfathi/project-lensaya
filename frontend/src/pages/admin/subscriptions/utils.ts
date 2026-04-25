@@ -10,6 +10,7 @@ import type {
   UpgradeDowngradeItem,
 } from "./types";
 import { DEFAULT_LIMITS, PLAN_COLOR_HEX } from "./constants";
+import { normalizePricingContent as resolvePricingContent } from "../../../lib/pricingContent";
 
 export const formatPlan = (plan: string) => {
   if (plan === "FREE") return "Free";
@@ -66,27 +67,90 @@ export const normalizeLimits = (limitsResult: Record<string, unknown>) => {
       portfolioPhotos: Number(rawFree.portfolioPhotos || rawFree.portfolioImages || 0),
       packagesPerService: Number(rawFree.packagesPerService || rawFree.packages || 0),
       packageFeatures: Number(rawFree.packageFeatures || rawFree.maxPackageFeatures || 5),
+      storageGb: Number(rawFree.storageGb || rawFree.storage || 0),
+      leadHistoryDays: Number(rawFree.leadHistoryDays || 30),
+      leadVisibilityLimit: Number(rawFree.leadVisibilityLimit || 60),
+      leadTemplatesCount: Number(rawFree.leadTemplatesCount || 1),
+      teamSeats: Number(rawFree.teamSeats || 1),
       customDomain: Boolean(rawFree.customDomain),
       analyticsTools: Boolean(rawFree.analyticsTools),
+      hideBrandingEnabled: Boolean(rawFree.hideBrandingEnabled),
+      leadFiltersEnabled: Boolean(rawFree.leadFiltersEnabled),
+      leadExportEnabled: Boolean(rawFree.leadExportEnabled),
+      leadRemindersEnabled: Boolean(rawFree.leadRemindersEnabled),
+      leadAdvancedAnalyticsEnabled: Boolean(rawFree.leadAdvancedAnalyticsEnabled),
       teamSectionTools: Boolean(rawFree.teamSectionTools),
+      isVisible: Boolean(rawFree.isVisible ?? true),
+      isActive: Boolean(rawFree.isActive ?? true),
+      isMostPopular: Boolean(rawFree.isMostPopular),
+      analyticsMode: String(rawFree.analyticsMode || "NONE").toUpperCase() as "NONE" | "BASIC" | "ADVANCED",
+      leadAnalyticsMode: String(rawFree.leadAnalyticsMode || "NONE").toUpperCase() as "NONE" | "BASIC" | "ADVANCED",
+      supportTier: String(rawFree.supportTier || "STANDARD").toUpperCase() as "STANDARD" | "PRIORITY",
+      brandingMode: String(rawFree.brandingMode || "FORCED_LENSAYA").toUpperCase() as "FORCED_LENSAYA" | "REMOVABLE",
+      leadChannels: {
+        whatsapp: Boolean((rawFree.leadChannels as { whatsapp?: unknown })?.whatsapp ?? true),
+        email: Boolean((rawFree.leadChannels as { email?: unknown })?.email ?? true),
+      },
     },
     pro: {
       services: Number(rawPro.services || 0),
       portfolioPhotos: Number(rawPro.portfolioPhotos || rawPro.portfolioImages || 0),
       packagesPerService: Number(rawPro.packagesPerService || rawPro.packages || 0),
       packageFeatures: Number(rawPro.packageFeatures || rawPro.maxPackageFeatures || 10),
+      storageGb: Number(rawPro.storageGb || rawPro.storage || 0),
+      leadHistoryDays: Number(rawPro.leadHistoryDays || 365),
+      leadVisibilityLimit: Number(rawPro.leadVisibilityLimit || -1),
+      leadTemplatesCount: Number(rawPro.leadTemplatesCount || 8),
+      teamSeats: Number(rawPro.teamSeats || 3),
       customDomain: Boolean(rawPro.customDomain),
       analyticsTools: Boolean(rawPro.analyticsTools ?? true),
+      hideBrandingEnabled: Boolean(rawPro.hideBrandingEnabled ?? true),
+      leadFiltersEnabled: Boolean(rawPro.leadFiltersEnabled ?? true),
+      leadExportEnabled: Boolean(rawPro.leadExportEnabled ?? true),
+      leadRemindersEnabled: Boolean(rawPro.leadRemindersEnabled ?? true),
+      leadAdvancedAnalyticsEnabled: Boolean(rawPro.leadAdvancedAnalyticsEnabled ?? true),
       teamSectionTools: Boolean(rawPro.teamSectionTools ?? false),
+      isVisible: Boolean(rawPro.isVisible ?? true),
+      isActive: Boolean(rawPro.isActive ?? true),
+      isMostPopular: Boolean(rawPro.isMostPopular ?? true),
+      analyticsMode: String(rawPro.analyticsMode || "ADVANCED").toUpperCase() as "NONE" | "BASIC" | "ADVANCED",
+      leadAnalyticsMode: String(rawPro.leadAnalyticsMode || "ADVANCED").toUpperCase() as "NONE" | "BASIC" | "ADVANCED",
+      supportTier: String(rawPro.supportTier || "STANDARD").toUpperCase() as "STANDARD" | "PRIORITY",
+      brandingMode: String(rawPro.brandingMode || "REMOVABLE").toUpperCase() as "FORCED_LENSAYA" | "REMOVABLE",
+      leadChannels: {
+        whatsapp: Boolean((rawPro.leadChannels as { whatsapp?: unknown })?.whatsapp ?? true),
+        email: Boolean((rawPro.leadChannels as { email?: unknown })?.email ?? true),
+      },
     },
     studio: {
       services: Number(rawStudio.services || -1),
       portfolioPhotos: Number(rawStudio.portfolioPhotos || rawStudio.portfolioImages || -1),
       packagesPerService: Number(rawStudio.packagesPerService || rawStudio.packages || -1),
       packageFeatures: Number(rawStudio.packageFeatures || rawStudio.maxPackageFeatures || 20),
+      storageGb: Number(rawStudio.storageGb || rawStudio.storage || -1),
+      leadHistoryDays: Number(rawStudio.leadHistoryDays || -1),
+      leadVisibilityLimit: Number(rawStudio.leadVisibilityLimit || -1),
+      leadTemplatesCount: Number(rawStudio.leadTemplatesCount || -1),
+      teamSeats: Number(rawStudio.teamSeats || 10),
       customDomain: Boolean(rawStudio.customDomain ?? true),
       analyticsTools: Boolean(rawStudio.analyticsTools ?? true),
+      hideBrandingEnabled: Boolean(rawStudio.hideBrandingEnabled ?? true),
+      leadFiltersEnabled: Boolean(rawStudio.leadFiltersEnabled ?? true),
+      leadExportEnabled: Boolean(rawStudio.leadExportEnabled ?? true),
+      leadRemindersEnabled: Boolean(rawStudio.leadRemindersEnabled ?? true),
+      leadAdvancedAnalyticsEnabled: Boolean(rawStudio.leadAdvancedAnalyticsEnabled ?? true),
       teamSectionTools: Boolean(rawStudio.teamSectionTools ?? true),
+      isVisible: Boolean(rawStudio.isVisible ?? true),
+      isActive: Boolean(rawStudio.isActive ?? true),
+      isMostPopular: Boolean(rawStudio.isMostPopular ?? false),
+      analyticsMode: String(rawStudio.analyticsMode || "ADVANCED").toUpperCase() as "NONE" | "BASIC" | "ADVANCED",
+      leadAnalyticsMode: String(rawStudio.leadAnalyticsMode || "ADVANCED").toUpperCase() as "NONE" | "BASIC" | "ADVANCED",
+      supportTier: String(rawStudio.supportTier || "PRIORITY").toUpperCase() as "STANDARD" | "PRIORITY",
+      brandingMode: String(rawStudio.brandingMode || "REMOVABLE").toUpperCase() as "FORCED_LENSAYA" | "REMOVABLE",
+      leadChannels: {
+        whatsapp: Boolean((rawStudio.leadChannels as { whatsapp?: unknown })?.whatsapp ?? true),
+        email: Boolean((rawStudio.leadChannels as { email?: unknown })?.email ?? true),
+      },
     },
   } satisfies LimitsShape;
 };
@@ -103,6 +167,14 @@ export const normalizePricing = (plansResult: { items?: Array<Record<string, unk
     const row = byPlanName.get(planName);
     return {
       id: String(row?.id || ""),
+      displayName: String(row?.displayName || row?.name || planName),
+      tagline: String(row?.tagline || ""),
+      subtitle: String(row?.subtitle || ""),
+      badgeText: String(row?.badgeText || ""),
+      ctaText: String(row?.ctaText || ""),
+      monthlyPriceDisplay: String(row?.monthlyPriceDisplay || ""),
+      yearlyPriceDisplay: String(row?.yearlyPriceDisplay || ""),
+      sortOrder: Number(row?.sortOrder || 0),
       price: Number(row?.price || 0),
       yearlyPrice: Number(row?.yearlyPrice || 0),
       currency: String(row?.currency || "USD").toUpperCase(),
@@ -118,27 +190,7 @@ export const normalizePricing = (plansResult: { items?: Array<Record<string, unk
 };
 
 export const normalizePublicPricingContent = (publicPricingResult: Record<string, unknown>) => {
-  const rawBullets = (publicPricingResult.bullets as Record<string, string[]>) || {};
-  const rawRows = (publicPricingResult.compareRows as Array<Record<string, unknown>>) || [];
-
-  return {
-    bullets: {
-      FREE: [...(rawBullets.FREE || [])],
-      PRO: [...(rawBullets.PRO || [])],
-      STUDIO: [...(rawBullets.STUDIO || [])],
-    },
-    compareRows: rawRows.map((row) => ({
-      id: String(row.id || ""),
-      label: String(row.label || ""),
-      sortOrder: Number(row.sortOrder || 0),
-      values: {
-        FREE: String((row.values as Record<string, unknown>)?.FREE || "-"),
-        PRO: String((row.values as Record<string, unknown>)?.PRO || "-"),
-        STUDIO: String((row.values as Record<string, unknown>)?.STUDIO || "-"),
-      },
-    })),
-    updatedAt: String(publicPricingResult.updatedAt || "") || null,
-  } satisfies PublicPricingContent;
+  return resolvePricingContent(publicPricingResult) satisfies PublicPricingContent;
 };
 
 export const buildPlanDistribution = (distribution: Array<{ plan: string; count: number }>): PlanDistributionItem[] => {

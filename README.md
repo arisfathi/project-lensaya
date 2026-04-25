@@ -12,7 +12,7 @@ Lensaya is a multi-tenant photographer platform with:
 - Database: PostgreSQL + Prisma
 - Storage: Cloudflare R2 (S3-compatible)
 - Queue/Workers: BullMQ + Redis
-- Billing: CHIP integration with Stripe-compatible webhook path support
+- Billing: Stripe (Checkout + Customer Portal + webhooks)
 
 ## Repository Structure
 
@@ -103,6 +103,7 @@ Frontend:
 - docs/architecture.md
 - docs/api.md
 - docs/business-rules.md
+- docs/billing-ui-ia.md
 - docs/database.md
 - docs/deployment.md
 

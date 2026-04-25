@@ -33,21 +33,18 @@ export const photographerServicesService = {
     const photographerId = requireTenantPhotographerId(tenant);
 
     if (!isAdminTenant(tenant)) {
-      const [plan, serviceCount] = await Promise.all([
-        planLimitService.getPlanByPhotographerId(photographerId),
-        prisma.service.count({
-          where: {
-            photographerId,
-            status: { not: "ARCHIVED" },
-          },
-        }),
-      ]);
-      if (planLimitService.isLimitReached({ used: serviceCount, max: plan.maxServices })) {
-        await planLimitService.throwLimitReached({
-          metric: "services",
-          used: serviceCount,
-          plan,
-        });
+      const serviceCount = await prisma.service.count({
+        where: {
+          photographerId,
+          status: { not: "ARCHIVED" },
+        },
+      });
+      const canAddService = await planLimitService.canAddService({
+        photographerId,
+        used: serviceCount,
+      });
+      if (!canAddService.allowed) {
+        throw new ApiError(403, canAddService.message || "Service limit reached");
       }
     }
 

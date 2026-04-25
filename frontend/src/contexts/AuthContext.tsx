@@ -2,6 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { authApi, getApiErrorMessage } from "../lib/api";
 import { clearAuthTokens } from "../lib/auth";
+import { PUBLIC_DIRECTORY_ENABLED } from "../lib/marketingFlags";
 import { isActualPublicSiteHostCandidate } from "../lib/platform";
 import { clearUserData } from "../lib/metaPixel";
 
@@ -30,8 +31,31 @@ type AuthUser = {
     };
     upgradeTarget: string | null;
   };
+  entitlements?: {
+    name: string;
+    displayName?: string;
+    upgradeTarget: string | null;
+    limits?: {
+      maxServices?: number;
+      maxPortfolioImages?: number;
+      maxPackagesPerService?: number;
+      maxStorageBytes?: number;
+    };
+    features?: {
+      analyticsEnabled?: boolean;
+      customDomainEnabled?: boolean;
+      hideBrandingEnabled?: boolean;
+      leadFiltersEnabled?: boolean;
+      leadExportEnabled?: boolean;
+      leadRemindersEnabled?: boolean;
+      teamToolsEnabled?: boolean;
+    };
+  };
   planFeatures?: {
     teamSectionTools: boolean;
+    hideBrandingEnabled?: boolean;
+    customDomainEnabled?: boolean;
+    analyticsEnabled?: boolean;
   };
 };
 
@@ -42,6 +66,7 @@ type AuthContextValue = {
   login: (input: { email: string; password: string }) => Promise<AuthUser>;
   signup: (input: { fullName: string; email: string; password: string; referralCode?: string }) => Promise<AuthUser>;
   googleAuth: (idToken: string, referralCode?: string) => Promise<AuthUser>;
+  appleAuth: (idToken: string, options?: { code?: string; fullName?: string; referralCode?: string }) => Promise<AuthUser>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<AuthUser | null>;
 };
@@ -123,9 +148,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let canceled = false;
-    const bootstrap = async () => {
+      const bootstrap = async () => {
       const pathname = typeof window !== "undefined" ? window.location.pathname : "";
-      const isPublicMarketingRoute = pathname === "/" || pathname === "/pricing" || pathname === "/photographers";
+      const isPublicMarketingRoute =
+        pathname === "/" ||
+        pathname === "/pricing" ||
+        (PUBLIC_DIRECTORY_ENABLED && pathname === "/photographers");
 
       if (isActualPublicSiteHostCandidate() || isPublicMarketingRoute) {
         clearAuthTokens();
@@ -170,6 +198,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await authApi.google({ idToken, referralCode });
     return ensureUserAfterAuth("Google login", { profileDelayMs: 500 });
   }, [ensureUserAfterAuth]);
+  const appleAuth = useCallback(
+    async (idToken: string, options: { code?: string; fullName?: string; referralCode?: string } = {}) => {
+      await authApi.apple({ idToken, code: options.code, fullName: options.fullName, referralCode: options.referralCode });
+      return ensureUserAfterAuth("Apple login", { profileDelayMs: 500 });
+    },
+    [ensureUserAfterAuth]
+  );
 
   const logout = useCallback(async () => {
     try {
@@ -191,10 +226,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       signup,
       googleAuth,
+      appleAuth,
       logout,
       refreshUser,
     }),
-    [googleAuth, isBootstrapping, login, logout, refreshUser, signup, user]
+    [appleAuth, googleAuth, isBootstrapping, login, logout, refreshUser, signup, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -211,5 +247,4 @@ export function useAuth() {
 export function getAuthErrorMessage(error: unknown) {
   return getApiErrorMessage(error, "Authentication failed");
 }
-
 

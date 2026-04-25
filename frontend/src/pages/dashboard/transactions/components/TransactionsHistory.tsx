@@ -2,6 +2,7 @@ import { ChevronLeft, ChevronRight, CreditCard, FileText } from "lucide-react";
 import { Link } from "react-router-dom";
 import { TRANSACTION_STATUS_CONFIG } from "../constants";
 import type { PaginationMeta, StatusFilter, TransactionItem } from "../types";
+import { toPlanLabel } from "../../../../lib/entitlements";
 import {
   formatBillingCycleLabel,
   formatCurrency,
@@ -18,6 +19,7 @@ type TransactionsHistoryProps = {
     page: number;
     statusFilter: StatusFilter;
     currentPlan: string;
+    upgradeTarget: string;
     rangeStart: number;
     rangeEnd: number;
   };
@@ -34,7 +36,7 @@ export function TransactionsHistory({ data, handlers }: TransactionsHistoryProps
       <div className="mb-4 flex flex-col gap-3 sm:mb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-base font-semibold text-slate-900 sm:text-lg">Transaction History</h2>
-          <p className="mt-0.5 text-xs text-slate-600 sm:text-sm">View payments, plan changes, and receipt placeholders.</p>
+          <p className="mt-0.5 text-xs text-slate-600 sm:text-sm">View payments and plan changes.</p>
         </div>
 
         <div className="flex items-center gap-2 sm:justify-end">
@@ -75,7 +77,7 @@ export function TransactionsHistory({ data, handlers }: TransactionsHistoryProps
               to="/dashboard/pricing"
               className="mt-4 inline-flex rounded-lg bg-cyan-500 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-cyan-600"
             >
-              Upgrade to Pro
+              Upgrade to {toPlanLabel(data.upgradeTarget)}
             </Link>
           ) : null}
         </div>
@@ -136,7 +138,12 @@ export function TransactionsHistory({ data, handlers }: TransactionsHistoryProps
                         ) : (
                           <div className="flex items-center gap-1.5 text-xs text-slate-500">
                             <FileText className="h-3.5 w-3.5" />
-                            <span>{transaction.receiptLabel || "Receipt available after live provider integration."}</span>
+                            <span>
+                              {transaction.receiptLabel &&
+                              /live provider integration|receipt placeholder/i.test(transaction.receiptLabel)
+                                ? "Receipt not available in-app yet."
+                                : (transaction.receiptLabel || "Receipt not available in-app yet.")}
+                            </span>
                           </div>
                         )}
                       </td>
@@ -180,7 +187,11 @@ export function TransactionsHistory({ data, handlers }: TransactionsHistoryProps
 
                   <div className="mt-2.5 flex items-center justify-between gap-2 text-xs text-slate-600">
                     <span>{formatDate(transaction.createdAt)}</span>
-                    <span className="truncate text-right">{transaction.receiptLabel || "Receipt placeholder"}</span>
+                    <span className="truncate text-right">
+                      {transaction.receiptLabel && /live provider integration|receipt placeholder/i.test(transaction.receiptLabel)
+                        ? "Receipt not available in-app yet."
+                        : (transaction.receiptLabel || "Receipt not available in-app yet.")}
+                    </span>
                   </div>
                 </article>
               );

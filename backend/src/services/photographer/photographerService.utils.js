@@ -2,6 +2,7 @@ import { ApiError } from "../../utils/apiError.js";
 import { logger } from "../../config/logger.js";
 import { prisma } from "../../config/prisma.js";
 import { FREE_ANALYTICS_LOCKED_SECTIONS } from "./photographerService.constants.js";
+import { planLimitService } from "../planLimitService.js";
 
 export const requireTenantPhotographerId = (tenant) => {
   if (!tenant?.photographerId) {
@@ -18,11 +19,9 @@ export const normalizePackageFeatures = (features) => {
 };
 
 export const enforcePackageFeatureLimit = ({ plan, features }) => {
-  const normalizedPlan = String(plan?.name || "FREE").trim().toUpperCase() || "FREE";
-  const limit = Number(
-    plan?.maxPackageFeatures ??
-      (normalizedPlan === "PRO" ? 10 : normalizedPlan === "STUDIO" ? 20 : 5)
-  );
+  const entitlements = planLimitService.toEntitlements(plan);
+  const normalizedPlan = String(entitlements?.name || "FREE").trim().toUpperCase() || "FREE";
+  const limit = Number(entitlements?.limits?.maxPackageFeaturesPerPackage ?? 5);
   const count = Array.isArray(features) ? features.length : 0;
 
   if (!Number.isFinite(limit) || limit < 0 || count <= limit) {
@@ -76,13 +75,14 @@ export const sourceLabel = (value) => {
 };
 
 export const buildAnalyticsAccess = (plan) => {
-  const tier = String(plan?.name || "FREE").trim().toUpperCase() || "FREE";
-  const hasFullAccess = Boolean(plan?.analyticsTools);
+  const entitlements = planLimitService.toEntitlements(plan);
+  const tier = String(entitlements?.name || "FREE").trim().toUpperCase() || "FREE";
+  const hasFullAccess = Boolean(entitlements?.features?.analyticsEnabled);
 
   return {
     tier,
     hasFullAccess,
-    upgradeTarget: hasFullAccess ? null : "PRO",
+    upgradeTarget: hasFullAccess ? null : entitlements?.upgradeTarget || "PRO",
     lockedSections: hasFullAccess ? [] : FREE_ANALYTICS_LOCKED_SECTIONS,
   };
 };

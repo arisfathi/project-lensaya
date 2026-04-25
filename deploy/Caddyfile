@@ -1,0 +1,30 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$BASE_DOMAIN}, www.{$BASE_DOMAIN}, app.{$BASE_DOMAIN}, admin.{$BASE_DOMAIN}, *.{$BASE_DOMAIN} {
+	tls {
+		dns cloudflare {$CLOUDFLARE_API_TOKEN}
+	}
+
+	encode zstd gzip
+
+	@www host www.{$BASE_DOMAIN}
+	handle @www {
+		redir https://{$BASE_DOMAIN}{uri} 308
+	}
+
+	@health path /health
+	handle @health {
+		reverse_proxy backend:4000
+	}
+
+	@api path /api/*
+	handle @api {
+		reverse_proxy backend:4000
+	}
+
+	root * /srv
+	try_files {path} /index.html
+	file_server
+}

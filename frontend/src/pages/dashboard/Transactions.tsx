@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { CreditCard } from "lucide-react";
 import { DashboardLayout } from "../../components/dashboard/DashboardLayout";
 import { LoadingCard } from "../../components/ui/LoadingSpinner";
 import { billingApi, getApiErrorMessage, isApiAccessError } from "../../lib/api";
 import { useToast } from "../../contexts/ToastContext";
+import { useEntitlements } from "../../hooks/useEntitlements";
 import { DEFAULT_PAGINATION, DEFAULT_SUMMARY } from "./transactions/constants";
 import { BillingNotices } from "./transactions/components/BillingNotices";
 import { SubscriptionOverview } from "./transactions/components/SubscriptionOverview";
@@ -13,8 +14,6 @@ import { TransactionsHistory } from "./transactions/components/TransactionsHisto
 import { TransactionsKpiGrid } from "./transactions/components/TransactionsKpiGrid";
 import type { PaginationMeta, StatusFilter, SubscriptionState, TransactionItem, TransactionSummary } from "./transactions/types";
 import { describePendingChange, formatDateTime, getPaymentStatusConfig } from "./transactions/utils";
-
-type PaymentProviderChoice = "auto" | "chip" | "stripe";
 
 export default function Transactions() {
   const [loading, setLoading] = useState(true);
@@ -28,31 +27,21 @@ export default function Transactions() {
   const [resumeLoading, setResumeLoading] = useState(false);
   const [renewLoading, setRenewLoading] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
-  const [paymentProvider, setPaymentProvider] = useState<PaymentProviderChoice>("auto");
   const [searchParams, setSearchParams] = useSearchParams();
 
   const { error, success } = useToast();
+  const { entitlementUpgradeTarget } = useEntitlements();
 
   useEffect(() => {
-    const checkoutStatus = searchParams.get("checkout");
     const billingLanding = searchParams.get("billing");
 
-    if (checkoutStatus === "success") {
-      success("Payment completed. Your subscription is active.");
-    } else if (checkoutStatus === "trial") {
-      success("Trial started successfully.");
-    } else if (checkoutStatus === "failed") {
-      error("Payment failed. Your subscription was not changed.");
-    } else if (checkoutStatus === "canceled") {
-      error("Checkout was canceled. You can try again anytime.");
-    } else if (billingLanding === "1") {
+    if (billingLanding === "1") {
       success("You are viewing the in-app billing center.");
     } else {
       return;
     }
 
     const nextParams = new URLSearchParams(searchParams);
-    nextParams.delete("checkout");
     nextParams.delete("billing");
     setSearchParams(nextParams, { replace: true });
   }, [error, searchParams, setSearchParams, success]);
@@ -93,7 +82,8 @@ export default function Transactions() {
   const handleOpenBillingPortal = async () => {
     try {
       setPortalLoading(true);
-      const result = await billingApi.portalSession({ returnUrl: window.location.href });
+      const origin = window.location.origin;
+      const result = await billingApi.portalSession({ returnUrl: `${origin}/dashboard/transactions?billing=1` });
       if (result.portalUrl) {
         window.location.assign(result.portalUrl);
         return;
@@ -131,9 +121,8 @@ export default function Transactions() {
       const result = await billingApi.changePlan({
         targetPlanId: currentPlan as "PRO" | "STUDIO",
         billingCycle: ((subscription?.billingCycle as "monthly" | "yearly" | null) || "monthly"),
-        ...(paymentProvider !== "auto" ? { paymentProvider } : {}),
-        successUrl: `${origin}/dashboard/transactions?checkout=success`,
-        cancelUrl: `${origin}/dashboard/transactions?checkout=canceled`,
+        successUrl: `${origin}/checkout/success?plan=${encodeURIComponent(currentPlan)}`,
+        cancelUrl: `${origin}/checkout/canceled?plan=${encodeURIComponent(currentPlan)}`,
         forceCheckout: true,
       });
 
@@ -166,6 +155,7 @@ export default function Transactions() {
   };
 
   const currentPlan = String(subscription?.plan || "FREE").toUpperCase();
+  const portalAvailable = String(subscription?.provider || "").toLowerCase() === "stripe";
   const paymentStatus = useMemo(() => getPaymentStatusConfig(subscription), [subscription]);
   const nextPaymentDate =
     currentPlan === "FREE"
@@ -199,42 +189,19 @@ export default function Transactions() {
             <CreditCard className="h-3.5 w-3.5 text-slate-400" />
             Payment Method
           </div>
-          <p className="mb-3 text-xs text-slate-600">Auto uses CHIP for Malaysia and Stripe for global markets.</p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setPaymentProvider("auto")}
-              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                paymentProvider === "auto"
-                  ? "border-cyan-300 bg-cyan-50 text-cyan-700"
-                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              Auto (Recommended)
-            </button>
-            <button
-              type="button"
-              onClick={() => setPaymentProvider("chip")}
-              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                paymentProvider === "chip"
-                  ? "border-cyan-300 bg-cyan-50 text-cyan-700"
-                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              CHIP
-            </button>
-            <button
-              type="button"
-              onClick={() => setPaymentProvider("stripe")}
-              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                paymentProvider === "stripe"
-                  ? "border-cyan-300 bg-cyan-50 text-cyan-700"
-                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              Stripe
-            </button>
-          </div>
+          <p className="mb-1 text-xs text-slate-600">Payments are handled by Stripe.</p>
+          <p className="text-xs text-slate-500">
+            {portalAvailable
+              ? 'Use "Manage billing" to update your payment method and invoices.'
+              : "Billing portal becomes available after your first successful Stripe checkout."}
+          </p>
+          <p className="mt-2 text-xs text-slate-500">
+            Need help?{" "}
+            <Link to="/help/billing" className="font-semibold text-cyan-700 hover:text-cyan-800">
+              Billing FAQ
+            </Link>
+            .
+          </p>
         </section>
 
         <SubscriptionOverview
@@ -268,6 +235,7 @@ export default function Transactions() {
             page,
             statusFilter,
             currentPlan,
+            upgradeTarget: entitlementUpgradeTarget,
             rangeStart,
             rangeEnd,
           }}

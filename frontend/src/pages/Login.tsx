@@ -1,25 +1,35 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { GoogleLogin, type CredentialResponse } from "@react-oauth/google";
+import type { CredentialResponse } from "@react-oauth/google";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { BrandWordmark } from "../components/BrandWordmark";
+import { SocialAuthSection } from "../components/auth/SocialAuthSection";
 import { useAuth, getAuthErrorMessage } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { getRoleHomePath } from "../lib/roles";
 import { trackLogin, setExternalUserID } from "../lib/metaPixel";
+import {
+  getAppleSignInConfig,
+  getAppleSignInErrorMessage,
+  isAppleSignInReady,
+  signInWithApple,
+} from "../lib/appleSignIn";
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { login, googleAuth } = useAuth();
+  const { login, googleAuth, appleAuth } = useAuth();
   const { success, error } = useToast();
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  const appleConfig = getAppleSignInConfig();
+  const appleReady = isAppleSignInReady(appleConfig);
 
   const redirect = searchParams.get("redirect");
 
@@ -82,6 +92,33 @@ export default function Login() {
     }
   };
 
+
+  const handleAppleLogin = async () => {
+    if (!appleReady) {
+      error("Apple sign-in is not configured for this environment.");
+      return;
+    }
+
+    try {
+      setAppleLoading(true);
+      const result = await signInWithApple({
+        clientId: appleConfig.clientId,
+        redirectUri: appleConfig.redirectUri,
+      });
+      const user = await appleAuth(result.idToken, { code: result.code, fullName: result.fullName });
+
+      trackLogin({ email: user.email });
+      setExternalUserID(user.id);
+
+      success("Logged in with Apple successfully.");
+      navigate(redirect || getRoleHomePath(user.role), { replace: true });
+    } catch (err) {
+      error(getAppleSignInErrorMessage(err) || getAuthErrorMessage(err));
+    } finally {
+      setAppleLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col lg:flex-row brand-shell">
       <div className="relative hidden overflow-hidden bg-gradient-to-br from-slate-950 via-cyan-900 to-slate-900 text-white lg:flex lg:w-1/2">
@@ -112,39 +149,32 @@ export default function Login() {
               <p className="text-slate-600">Welcome back! Please enter your details</p>
             </div>
 
-            <div className="mb-6">
-              {googleClientId ? (
-                <div className="flex justify-center">
-                  <GoogleLogin
-                    onSuccess={(credentialResponse) => {
-                      void handleGoogleSuccess(credentialResponse);
-                    }}
-                    onError={() => error("Google login failed. Please try again.")}
-                    text="continue_with"
-                    shape="rectangular"
-                    theme="outline"
-                    size="large"
-                    width="350"
-                  />
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => error("VITE_GOOGLE_CLIENT_ID is missing in frontend .env.")}
-                  className="w-full rounded-xl border border-slate-200 bg-white/90 px-4 py-3 transition-colors hover:bg-white"
-                >
-                  <span className="font-medium text-slate-700">Google login unavailable</span>
-                </button>
-              )}
-              {googleLoading ? <p className="mt-2 text-center text-xs text-slate-500">Signing in with Google...</p> : null}
-            </div>
+            <SocialAuthSection
+              className="mb-6"
+              googleClientId={googleClientId}
+              appleEnabled={appleReady}
+              googleText="Sign in with Google"
+              appleText="Sign in with Apple"
+              onGoogleSuccess={(credentialResponse) => {
+                void handleGoogleSuccess(credentialResponse);
+              }}
+              onGoogleError={() => error("Google login failed. Please try again.")}
+              onAppleClick={() => {
+                void handleAppleLogin();
+              }}
+              googleLoading={googleLoading}
+              googleLoadingLabel="Signing in with Google..."
+              googleUnavailableLabel="Google login unavailable"
+              onGoogleUnavailableClick={() => error("VITE_GOOGLE_CLIENT_ID is missing in frontend .env.")}
+              appleLoading={appleLoading}
+            />
 
             <div className="relative mb-6">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-slate-200" />
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="bg-transparent px-4 text-slate-500">or continue with email</span>
+                <span className="bg-white px-4 text-slate-500">or continue with email</span>
               </div>
             </div>
 
@@ -211,8 +241,6 @@ export default function Login() {
     }
 
       
-
-
 
 
 
