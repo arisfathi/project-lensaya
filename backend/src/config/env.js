@@ -213,6 +213,15 @@ const resolvedBaseDomain =
 
 const defaultCorsOrigins = isProduction ? [resolvedAppUrl, resolvedPublicAppUrl, resolvedAdminAppUrl] : ["http://localhost:5173"];
 
+const queueConcurrency = parsePositiveInt(process.env.QUEUE_CONCURRENCY, 5);
+const defaultWorkerConcurrency = parsePositiveInt(process.env.WORKER_CONCURRENCY, queueConcurrency);
+const workerConcurrency = {
+  analytics: parsePositiveInt(process.env.WORKER_CONCURRENCY_ANALYTICS, defaultWorkerConcurrency),
+  email: parsePositiveInt(process.env.WORKER_CONCURRENCY_EMAIL, defaultWorkerConcurrency),
+  notification: parsePositiveInt(process.env.WORKER_CONCURRENCY_NOTIFICATION, defaultWorkerConcurrency),
+  imageProcessing: parsePositiveInt(process.env.WORKER_CONCURRENCY_IMAGE_PROCESSING, defaultWorkerConcurrency),
+};
+
 export const env = {
   nodeEnv: process.env.NODE_ENV || "development",
   isProduction,
@@ -220,7 +229,8 @@ export const env = {
   logLevel: process.env.LOG_LEVEL || "info",
   sentryDsn: process.env.SENTRY_DSN || "",
   redisUrl: process.env.REDIS_URL || "",
-  queueConcurrency: Number(process.env.QUEUE_CONCURRENCY || 5),
+  queueConcurrency,
+  workerConcurrency,
 
   assetCleanup: {
     enabled: parseBoolean(process.env.ASSET_CLEANUP_ENABLED, true),
